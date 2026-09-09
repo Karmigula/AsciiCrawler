@@ -12,8 +12,12 @@ INT_FIELDS = (
     "max_fps",
     "map_width",
     "map_height",
+    "map_seed",
+    "bsp_min_partition",
+    "bsp_min_room",
     "tps",
     "tick_seed",
+    "fov_radius",
 )
 
 
@@ -36,12 +40,17 @@ def test_default_config_values():
     assert DEFAULT_CONFIG.tps == 10
     assert DEFAULT_CONFIG.max_fps > DEFAULT_CONFIG.tps
     assert DEFAULT_CONFIG.agent_glyph == "@"
+    assert DEFAULT_CONFIG.fov_radius == 8
+    assert DEFAULT_CONFIG.remembered_brightness == 0.6
+    assert 0.0 < DEFAULT_CONFIG.remembered_brightness < 1.0
+    assert DEFAULT_CONFIG.bsp_min_room + 2 <= DEFAULT_CONFIG.bsp_min_partition
 
 
 def test_default_config_types():
     for name in INT_FIELDS:
         assert isinstance(getattr(DEFAULT_CONFIG, name), int), name
     assert isinstance(DEFAULT_CONFIG.max_frame_seconds, float)
+    assert isinstance(DEFAULT_CONFIG.remembered_brightness, float)
     assert isinstance(DEFAULT_CONFIG.font_path, str)
     assert isinstance(DEFAULT_CONFIG.window_title, str)
     for name in ("background_color", "wall_color", "floor_color", "agent_color"):

@@ -21,6 +21,9 @@ class Config:
     # world
     map_width: int = 96
     map_height: int = 54
+    map_seed: int = 4242
+    bsp_min_partition: int = 12
+    bsp_min_room: int = 4
 
     # simulation
     tps: int = 10
@@ -29,6 +32,10 @@ class Config:
 
     # agent
     agent_glyph: str = "@"
+    fov_radius: int = 8
+
+    # fog of war
+    remembered_brightness: float = 0.6
 
 
 DEFAULT_CONFIG = Config()

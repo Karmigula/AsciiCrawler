@@ -1,11 +1,22 @@
 import random
 
 from sim.tick import AgentState, tick
-from world.hardcoded import Tile, build_map
+from world.tiles import Tile
+
+
+def _open_field(width: int = 96, height: int = 54) -> list[list[Tile]]:
+    """A FLOOR interior enclosed by a WALL border (open arena for walking)."""
+    return [
+        [
+            Tile.WALL if x in (0, width - 1) or y in (0, height - 1) else Tile.FLOOR
+            for x in range(width)
+        ]
+        for y in range(height)
+    ]
 
 
 def _walk(seed: int, steps: int, start: tuple[int, int]) -> list[tuple[int, int]]:
-    tiles = build_map(96, 54)
+    tiles = _open_field()
     rng = random.Random(seed)
     agent = AgentState(x=start[0], y=start[1])
     path = []
@@ -16,7 +27,7 @@ def _walk(seed: int, steps: int, start: tuple[int, int]) -> list[tuple[int, int]
 
 
 def test_tick_moves_exactly_one_cell_orthogonally():
-    tiles = build_map(96, 54)
+    tiles = _open_field()
     rng = random.Random(0)
     agent = AgentState(x=48, y=27)
     for _ in range(1000):
@@ -26,7 +37,7 @@ def test_tick_moves_exactly_one_cell_orthogonally():
 
 
 def test_tick_never_enters_a_wall():
-    tiles = build_map(96, 54)
+    tiles = _open_field()
     rng = random.Random(99)
     agent = AgentState(x=48, y=27)
     for _ in range(2000):

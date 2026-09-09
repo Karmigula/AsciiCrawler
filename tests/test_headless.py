@@ -2,11 +2,17 @@ import sys
 
 
 def test_headless_modules_do_not_import_pygame():
+    import agent.fov
     import config
+    import render.fog
     import sim.tick
-    import world.hardcoded
+    import world.gen_bsp
+    import world.tiles
 
     assert config.DEFAULT_CONFIG is not None
     assert sim.tick.tick is not None
-    assert world.hardcoded.build_map is not None
+    assert world.tiles.Tile is not None
+    assert world.gen_bsp.generate is not None
+    assert agent.fov.compute_fov is not None
+    assert render.fog.fog_grid is not None
     assert "pygame" not in sys.modules
