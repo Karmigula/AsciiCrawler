@@ -3,6 +3,7 @@
 import random
 from dataclasses import replace
 
+from agent.stats import Stats
 from config import DEFAULT_CONFIG
 from sim.ai import take_turns
 from sim.monsters import MONSTERS
@@ -41,8 +42,19 @@ class TinyWorld:
         self.moves += 1
 
 
-def _turn(world, agent_pos, tick=1, seed=1, config=DEFAULT_CONFIG):
-    take_turns(agent_pos, list(world.monsters), world, random.Random(seed), config, tick)
+class FakeAgent:
+    """Just the surface sim.ai touches: where it stands and what it can lose."""
+
+    def __init__(self, pos, config=DEFAULT_CONFIG) -> None:
+        self.x, self.y = pos
+        self.stats = Stats.starting(config)
+
+
+def _turn(world, agent_pos, tick=1, seed=1, config=DEFAULT_CONFIG, agent=None):
+    agent = agent or FakeAgent(agent_pos, config)
+    return take_turns(
+        agent, list(world.monsters), world, random.Random(seed), config, tick
+    )
 
 
 def test_a_monster_that_can_see_the_agent_closes_the_distance():
@@ -106,12 +118,14 @@ def test_monsters_do_not_stack():
     assert (mover.x, mover.y) == (10, 10)
 
 
-def test_a_monster_does_not_step_onto_the_agent():
-    """Bumping is Phase 4b; until then the agent's tile is simply occupied."""
+def test_a_monster_bumping_the_agent_attacks_instead_of_moving():
     monster = _monster(10, 10)
     world = TinyWorld([monster])
-    _turn(world, (11, 10))
-    assert (monster.x, monster.y) == (10, 10)
+    agent = FakeAgent((11, 10))
+    damage = _turn(world, (11, 10), agent=agent)
+    assert (monster.x, monster.y) == (10, 10)  # the blow costs the step
+    assert damage > 0
+    assert agent.stats.hp == agent.stats.max_hp - damage
 
 
 def test_a_monster_acts_at_most_once_per_tick():
@@ -128,7 +142,9 @@ def test_turn_order_does_not_depend_on_the_order_handed_in():
     def run(order):
         monsters = [_monster(x, y) for x, y in order]
         world = TinyWorld(monsters)
-        take_turns((20, 20), list(monsters), world, random.Random(4), DEFAULT_CONFIG, 1)
+        take_turns(
+            FakeAgent((20, 20)), list(monsters), world, random.Random(4), DEFAULT_CONFIG, 1
+        )
         return sorted((m.x, m.y) for m in monsters)
 
     forward = [(10, 10), (11, 11), (12, 10)]

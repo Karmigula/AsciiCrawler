@@ -28,7 +28,10 @@ from agent.fov import compute_fov
 from agent.goals import DIRS_8, ExploreGoal
 from agent.memory import Memory
 from config import Config
+from agent.stats import Stats
 from sim.ai import take_turns
+from sim.combat import agent_hits_monster, xp_for
+from sim.items import GRAVE
 
 
 @dataclass
@@ -43,24 +46,32 @@ class AgentState:
     tick_count: int = 0
     active_entities: list = field(default_factory=list)
     pruned_total: int = 0
+    stats: Stats | None = None  # filled from config on the first tick
+    kills: int = 0
+    deaths: int = 0
+    damage_taken: int = 0
 
 
 def tick(agent: AgentState, world, rng: random.Random, config: Config) -> None:
     """Advance the world by one tick, in place. Deterministic for a fixed
     world seed, identically-seeded rng, and config."""
     agent.tick_count += 1
+    if agent.stats is None:
+        agent.stats = Stats.starting(config)
     world.ensure_loaded((agent.x, agent.y))
-    _act(agent, world, rng)
+    _act(agent, world, rng, config)
     _observe(agent, world, config)
     _forget(agent, config)
     _scan_active(agent, world, config)
     _monsters_act(agent, world, rng, config)
+    _resolve_death(agent, world, config)
+    _respawn_pass(agent, world, config)
     _think(agent, rng, config)
 
 
-def _act(agent: AgentState, world, rng: random.Random) -> None:
+def _act(agent: AgentState, world, rng: random.Random, config: Config) -> None:
     if agent.explorer.path:
-        if _try_step(agent, agent.explorer.path[0], world):
+        if _try_step(agent, agent.explorer.path[0], world, rng, config):
             agent.explorer.path.pop(0)
         else:
             agent.explorer.drop_plan()  # blocked: physics disagrees with belief
@@ -72,7 +83,7 @@ def _act(agent: AgentState, world, rng: random.Random) -> None:
         if _wander_ok(agent, dx, dy)
     ]
     if options:
-        _try_step(agent, rng.choice(options), world)
+        _try_step(agent, rng.choice(options), world, rng, config)
 
 
 def _wander_ok(agent: AgentState, dx: int, dy: int) -> bool:
@@ -84,15 +95,68 @@ def _wander_ok(agent: AgentState, dx: int, dy: int) -> bool:
     return agent.memory.believes_passable((agent.x + dx, agent.y + dy))
 
 
-def _try_step(agent: AgentState, nxt: tuple[int, int], world) -> bool:
-    """Move one cell if the step is sane and the world agrees it is passable."""
+def _try_step(
+    agent: AgentState, nxt: tuple[int, int], world, rng: random.Random, config: Config
+) -> bool:
+    """Move one cell — or, if something is standing there, hit it instead.
+
+    Bump combat: the agent has no attack command, so a step into an occupied
+    tile spends itself as a blow. The step counts as taken either way, which
+    is what stops a plan from spinning on a blocked tile.
+    """
     dx, dy = nxt[0] - agent.x, nxt[1] - agent.y
     if max(abs(dx), abs(dy)) != 1:
         return False
     if not world.tile_at(nxt[0], nxt[1]).passable:
         return False
+    entity_at = getattr(world, "entity_at", None)
+    monster = None if entity_at is None else entity_at(nxt[0], nxt[1])
+    if monster is not None:
+        agent_hits_monster(agent.stats, monster, rng, config)
+        if monster.hp <= 0:
+            _kill(agent, monster, world, rng, config)
+        return True
     agent.x, agent.y = nxt
     return True
+
+
+def _kill(agent: AgentState, monster, world, rng: random.Random, config: Config) -> None:
+    """Remove a dead monster, maybe leave its belongings, bank the experience."""
+    where = (monster.x, monster.y)
+    world.remove_entity(monster)
+    agent.kills += 1
+    agent.stats.gain_xp(xp_for(monster, config), config)
+    if rng.random() < config.monster_drop_chance:
+        from sim.items import ITEMS
+
+        world.drop_item(ITEMS[rng.randrange(len(ITEMS))], *where)
+
+
+def _resolve_death(agent: AgentState, world, config: Config) -> None:
+    """If the agent died: mark the spot, start over weak, keep every memory.
+
+    Memory surviving death is the aquarium's central bargain — the creature
+    starts again at level 1 but not at square one, so it does not re-run its
+    first ten minutes forever.
+    """
+    if agent.stats.alive:
+        return
+    if hasattr(world, "drop_item"):
+        world.drop_item(GRAVE, agent.x, agent.y)
+    agent.deaths += 1
+    agent.stats = Stats.starting(config)
+    spawn = getattr(world, "spawn", (agent.x, agent.y))
+    agent.x, agent.y = spawn
+    agent.explorer.drop_plan()
+
+
+def _respawn_pass(agent: AgentState, world, config: Config) -> None:
+    """Let cleared chunks refill, on an interval and never near the agent."""
+    if agent.tick_count % config.respawn_check_interval:
+        return
+    sweep = getattr(world, "respawn_pass", None)
+    if sweep is not None:
+        sweep((agent.x, agent.y), agent.tick_count, config)
 
 
 def _observe(agent: AgentState, world, config: Config) -> None:
@@ -159,8 +223,8 @@ def _monsters_act(agent: AgentState, world, rng: random.Random, config: Config) 
     """Give the active monsters their turn. Worlds without them just skip it."""
     if not agent.active_entities or not hasattr(world, "move_entity"):
         return
-    take_turns(
-        (agent.x, agent.y), agent.active_entities, world, rng, config, agent.tick_count
+    agent.damage_taken += take_turns(
+        agent, agent.active_entities, world, rng, config, agent.tick_count
     )
 
 

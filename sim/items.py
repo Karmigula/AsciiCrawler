@@ -26,3 +26,6 @@ ITEMS: tuple[ItemKind, ...] = (
     ItemKind("potion", "!", slot=None),
     ItemKind("gold", "$", slot=None),
 )
+
+GRAVE = ItemKind("grave", "+", slot=None)
+"""Where the agent died. Not in ITEMS: graves are left, never spawned."""

@@ -22,23 +22,27 @@ import random
 
 from agent.pathing import DIRS_8
 from config import Config
+from sim.combat import monster_hits_agent
 
 Position = tuple[int, int]
 
 
 def take_turns(
-    agent_pos: Position,
+    agent,
     active: list,
     world,
     rng: random.Random,
     config: Config,
     tick: int,
-) -> None:
-    """Move every active monster that is due to act, in place.
+) -> int:
+    """Move or attack with every active monster that is due to act, in place.
 
-    Iteration order is sorted by position, never dict order: the active list
-    arrives in chunk-generation order, which depends on the agent's route.
+    Returns the total damage dealt to the agent. Iteration order is sorted by
+    position, never dict order: the active list arrives in chunk-generation
+    order, which depends on the agent's route.
     """
+    agent_pos = (agent.x, agent.y)
+    damage = 0
     for monster in sorted(active, key=lambda m: (m.y, m.x)):
         if monster.last_moved_tick == tick:
             continue
@@ -46,8 +50,13 @@ def take_turns(
             continue
         monster.last_moved_tick = tick
         target = _choose_step(monster, agent_pos, rng, config)
-        if target is not None:
-            _step(monster, target, agent_pos, world)
+        if target is None:
+            continue
+        if target == agent_pos and agent.stats.alive:
+            damage += monster_hits_agent(monster, agent.stats, rng, config)
+            continue
+        _step(monster, target, agent_pos, world)
+    return damage
 
 
 def _choose_step(monster, agent_pos: Position, rng: random.Random, config: Config):
@@ -73,7 +82,7 @@ def _toward(monster, agent_pos: Position) -> Position:
 
 
 def _step(monster, target: Position, agent_pos: Position, world) -> None:
-    """Take the step if the world allows it. Bumping is Phase 4b."""
+    """Take the step if the world allows it (bumping is handled by the caller)."""
     if target == (monster.x, monster.y) or target == agent_pos:
         return
     if not world.tile_at(*target).passable:

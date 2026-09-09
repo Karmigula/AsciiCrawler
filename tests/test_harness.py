@@ -69,3 +69,17 @@ def test_the_active_scan_stays_bounded_by_the_activation_radius():
     stats = run_ticks(400, 5, _decaying())
     span = 2 * DEFAULT_CONFIG.activation_radius + 1
     assert stats.monsters_seen <= span * span
+
+
+def test_a_soak_reports_the_danger_it_ran_into():
+    """Phase 4 made the world lethal; the referee box should say so."""
+    stats = run_ticks(1500, 7, _decaying(ttl=600, interval=50))
+    assert stats.kills > 0
+    assert stats.damage_taken > 0
+    assert stats.final_level >= 1
+    assert stats.deaths >= 0
+
+
+def test_death_does_not_break_determinism():
+    config = _decaying(ttl=600, interval=50)
+    assert run_ticks(1500, 7, config) == run_ticks(1500, 7, config)

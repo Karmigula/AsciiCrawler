@@ -1,8 +1,7 @@
 """Per-chunk population: monsters, items and hidden traps, placed at generation.
 
-Everything here is decor this phase — nothing moves, fights or triggers until
-Phase 4. What matters now is that the placement is *deterministic* and that it
-*scales with depth*: a chunk populated from (world_seed, cx, cy) holds the same
+This module places things; `sim.ai` moves them and `sim.combat` kills them.
+What matters here is that placement is *deterministic* and *scales with depth*: a chunk populated from (world_seed, cx, cy) holds the same
 spawns forever, and the further that chunk sits from the world origin the more
 monsters it holds and the deeper the table they roll from.
 
@@ -10,11 +9,10 @@ Distance is Euclidean from the world origin measured at the chunk-center tile
 — the same metric and sample point `chunks._band_for` uses for biome bands, so
 depth and biome move together instead of drifting apart.
 
-Respawn: the per-chunk cooldown is *data* here (`ChunkContents.respawn_tick`)
-and is not ticked. Deferring the timer to Phase 4 is deliberate — respawn only
-means something once monsters can die, and a timer that appends spawns nothing
-can remove would just inflate chunks during a Phase 3 soak. `respawn_cap` is
-carried alongside so Phase 4 has the ceiling ready.
+Respawn (Phase 4): a chunk the agent has cleared refills slowly, but only
+while the agent is far from it — refilling a chunk somebody is standing in
+would read as monsters materialising out of the air. `respawn_tick` is the
+next tick this chunk may add anything, and `respawn_cap` is its ceiling.
 """
 
 import math
@@ -178,3 +176,42 @@ def populate(
     for x, y in take(round(config.trap_density * len(spots))):
         contents.traps.append(Trap(x=origin_x + x, y=origin_y + y))
     return contents
+
+
+def try_respawn(
+    rng: random.Random,
+    tiles: np.ndarray,
+    cx: int,
+    cy: int,
+    contents: ChunkContents,
+    config: Config,
+    tick: int,
+) -> Monster | None:
+    """Add one monster to a thinned-out chunk, or return None.
+
+    Deliberately one at a time: a cleared chunk should refill over minutes of
+    watching, not snap back to full the moment the agent turns their back.
+    """
+    if tick < contents.respawn_tick or len(contents.monsters) >= contents.respawn_cap:
+        return None
+    size = config.chunk_size
+    centre = (size // 2, size // 2)
+    floor = int(Tile.FLOOR)
+    cells = tiles.tolist()
+    occupied = {(m.x - cx * size, m.y - cy * size) for m in contents.monsters}
+    spots = [
+        (x, y)
+        for y in range(tiles.shape[0])
+        for x in range(tiles.shape[1])
+        if cells[y][x] == floor and (x, y) != centre and (x, y) not in occupied
+    ]
+    contents.respawn_tick = tick + config.respawn_cooldown_ticks
+    if not spots:
+        return None
+    x, y = spots[rng.randrange(len(spots))]
+    table = table_for_tier(max_tier_for(cx, cy, config))
+    kind = table[rng.randrange(len(table))]
+    monster = Monster(kind=kind, x=cx * size + x, y=cy * size + y, hp=kind.hp)
+    contents.monsters.append(monster)
+    contents.invalidate()
+    return monster

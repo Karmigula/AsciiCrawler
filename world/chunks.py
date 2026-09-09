@@ -48,7 +48,7 @@ import numpy as np
 
 from config import Config, DEFAULT_CONFIG
 from world import gen_bsp, gen_cave, gen_cavern
-from world.populate import ChunkContents, Monster, populate
+from world.populate import ChunkContents, Item, Monster, populate, try_respawn
 from world.tiles import Tile
 
 ChunkKey = tuple[int, int]
@@ -56,6 +56,7 @@ Position = tuple[int, int]
 
 _MASK64 = (1 << 64) - 1
 _NOISE_SALT = 0xC0FFEE  # keeps distance-noise hashes distinct from other uses
+_RESPAWN_SALT = 0xBADCAFE  # respawn rolls get their own stream too
 _POPULATE_SALT = 0x5EED11FE  # populate rolls from a stream of their own, so
 # adding or retuning spawns can never shift a single tile of generated terrain
 
@@ -171,6 +172,34 @@ class ChunkStore:
         contents = self.contents_at(monster.x, monster.y)
         contents.monsters.remove(monster)
         contents.invalidate()
+
+    def drop_item(self, kind, x: int, y: int) -> Item:
+        """Leave an item on a global tile (a corpse's belongings, a grave)."""
+        contents = self.contents_at(x, y)
+        item = Item(kind=kind, x=x, y=y)
+        contents.items.append(item)
+        contents.invalidate()
+        return item
+
+    def respawn_pass(self, agent_pos: Position, tick: int, config: Config) -> int:
+        """Refill thinned-out chunks the agent is well away from. Returns adds.
+
+        Only chunks already in memory are considered: generating a chunk in
+        order to repopulate it would defeat lazy streaming entirely.
+        """
+        added = 0
+        size = config.chunk_size
+        for (cx, cy), chunk in self._chunks.items():
+            centre = (cx * size + size // 2, cy * size + size // 2)
+            far = max(abs(centre[0] - agent_pos[0]), abs(centre[1] - agent_pos[1]))
+            if far <= config.respawn_distance:
+                continue
+            rng = random.Random(
+                _hash_ints(self.seed, cx, cy, tick, _RESPAWN_SALT) % (1 << 63)
+            )
+            if try_respawn(rng, chunk.tiles, cx, cy, chunk.contents, config, tick):
+                added += 1
+        return added
 
     def active_entities(self, origin: Position, radius: int) -> list[Monster]:
         """Monsters inside the activation radius (Chebyshev, the agent's metric).

@@ -149,6 +149,7 @@ class PopulatedWorld(FiniteWorld):
     def __init__(self, tiles, monsters=None) -> None:
         super().__init__(tiles)
         self.monsters = list(monsters or [])
+        self.dropped = []
 
     def entity_at(self, x, y):
         for monster in self.monsters:
@@ -158,6 +159,19 @@ class PopulatedWorld(FiniteWorld):
 
     def item_at(self, x, y):
         return None
+
+    def remove_entity(self, monster):
+        self.monsters.remove(monster)
+
+    def drop_item(self, kind, x, y):
+        self.dropped.append((kind.key, x, y))
+
+    @property
+    def spawn(self):
+        return (5, 5)
+
+    def move_entity(self, monster, x, y):
+        monster.x, monster.y = x, y
 
     def active_entities(self, origin, radius):
         return [
@@ -291,3 +305,73 @@ def test_monsters_actually_move_when_the_agent_is_near():
         for m in world.get_chunk(cx, cy).contents.monsters
     }
     assert any(before[k] != after[k] for k in before if k in after)
+
+
+def test_the_agent_hits_what_it_walks_into_instead_of_walking_through_it():
+    """Bump combat: the step is spent on the blow, the agent stays put."""
+    from dataclasses import replace
+
+    config = replace(DEFAULT_CONFIG, damage_variance=0)
+    monster = _monster(21, 20, "T")  # tough enough to survive one hit
+    world = PopulatedWorld(_open_field(), [monster])
+    agent = AgentState(x=20, y=20)
+    agent.explorer.path = [(21, 20)]
+    before = monster.hp
+    tick(agent, world, random.Random(1), config)
+    assert (agent.x, agent.y) == (20, 20)
+    assert monster.hp < before
+
+
+def test_killing_a_monster_removes_it_and_pays_experience():
+    from dataclasses import replace
+
+    config = replace(DEFAULT_CONFIG, damage_variance=0, monster_drop_chance=1.0)
+    monster = _monster(21, 20, "r")  # 3 hp against a 5-attack agent: one blow
+    world = PopulatedWorld(_open_field(), [monster])
+    agent = AgentState(x=20, y=20)
+    agent.explorer.path = [(21, 20)]
+    tick(agent, world, random.Random(1), config)
+    assert monster not in world.monsters
+    assert agent.kills == 1
+    assert agent.stats.xp > 0 or agent.stats.level > 1
+    assert world.dropped  # drop chance 1.0: the corpse left something
+
+
+def test_a_corpse_leaves_nothing_when_the_drop_roll_fails():
+    from dataclasses import replace
+
+    config = replace(DEFAULT_CONFIG, damage_variance=0, monster_drop_chance=0.0)
+    world = PopulatedWorld(_open_field(), [_monster(21, 20, "r")])
+    agent = AgentState(x=20, y=20)
+    agent.explorer.path = [(21, 20)]
+    tick(agent, world, random.Random(1), config)
+    assert agent.kills == 1
+    assert world.dropped == []
+
+
+def test_death_resets_the_body_marks_the_spot_and_keeps_the_mind():
+    """The aquarium's bargain: start over weak, but not ignorant."""
+    world = PopulatedWorld(_open_field(), [_monster(21, 20, "D")])
+    agent = AgentState(x=20, y=20)
+    rng = random.Random(1)
+    tick(agent, world, rng, DEFAULT_CONFIG)
+    agent.stats.hp = 1  # on the brink, with a dragon adjacent
+    remembered = len(agent.memory)
+    assert remembered > 0
+    for _ in range(30):
+        tick(agent, world, rng, DEFAULT_CONFIG)
+        if agent.deaths:
+            break
+    assert agent.deaths == 1
+    assert (agent.x, agent.y) == world.spawn
+    assert agent.stats.hp == agent.stats.max_hp == DEFAULT_CONFIG.agent_max_hp
+    assert agent.stats.level == 1
+    assert len(agent.memory) >= remembered  # memory survives death
+    assert any(kind == "grave" for kind, _, _ in world.dropped)
+
+
+def test_the_agent_gets_its_stats_without_being_handed_them():
+    agent = AgentState(x=20, y=20)
+    assert agent.stats is None
+    tick(agent, FiniteWorld(_open_field()), random.Random(1), DEFAULT_CONFIG)
+    assert agent.stats.hp == DEFAULT_CONFIG.agent_max_hp

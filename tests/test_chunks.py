@@ -365,3 +365,82 @@ def test_removing_a_monster_takes_it_out_of_the_lookup():
     store.entity_at(*where)
     store.remove_entity(monster)
     assert store.entity_at(*where) is None
+
+
+def _clear_chunk(store, cx, cy):
+    contents = store.get_chunk(cx, cy).contents
+    contents.monsters.clear()
+    contents.invalidate()
+    return contents
+
+
+def test_a_cleared_chunk_refills_when_the_agent_is_far_away():
+    store = ChunkStore(DEFAULT_CONFIG, world_seed=31)
+    contents = _clear_chunk(store, 3, 3)
+    store.respawn_pass((0, 0), tick=5000, config=DEFAULT_CONFIG)
+    assert len(contents.monsters) == 1  # one at a time, not a full reset
+
+
+def test_nothing_respawns_next_to_the_agent():
+    """Monsters must not materialise in front of someone standing there."""
+    store = ChunkStore(DEFAULT_CONFIG, world_seed=31)
+    size = DEFAULT_CONFIG.chunk_size
+    contents = _clear_chunk(store, 3, 3)
+    here = (3 * size + size // 2, 3 * size + size // 2)
+    store.respawn_pass(here, tick=5000, config=DEFAULT_CONFIG)
+    assert contents.monsters == []
+
+
+def test_the_respawn_cooldown_paces_the_refill():
+    store = ChunkStore(DEFAULT_CONFIG, world_seed=31)
+    contents = _clear_chunk(store, 3, 3)
+    store.respawn_pass((0, 0), tick=5000, config=DEFAULT_CONFIG)
+    store.respawn_pass((0, 0), tick=5001, config=DEFAULT_CONFIG)
+    assert len(contents.monsters) == 1  # too soon for a second
+    later = 5000 + DEFAULT_CONFIG.respawn_cooldown_ticks + 1
+    store.respawn_pass((0, 0), tick=later, config=DEFAULT_CONFIG)
+    assert len(contents.monsters) == 2
+
+
+def test_respawn_stops_at_the_per_chunk_cap():
+    store = ChunkStore(DEFAULT_CONFIG, world_seed=31)
+    contents = _clear_chunk(store, 3, 3)
+    tick_at = 5000
+    for _ in range(DEFAULT_CONFIG.respawn_cap_per_chunk + 6):
+        store.respawn_pass((0, 0), tick=tick_at, config=DEFAULT_CONFIG)
+        tick_at += DEFAULT_CONFIG.respawn_cooldown_ticks + 1
+    assert len(contents.monsters) == DEFAULT_CONFIG.respawn_cap_per_chunk
+
+
+def test_respawn_never_generates_a_chunk_just_to_fill_it():
+    """Repopulating an ungenerated chunk would defeat lazy streaming."""
+    store = ChunkStore(DEFAULT_CONFIG, world_seed=31)
+    store.get_chunk(0, 0)
+    before = len(store)
+    store.respawn_pass((0, 0), tick=9999, config=DEFAULT_CONFIG)
+    assert len(store) == before
+
+
+def test_respawned_monsters_land_on_floor_and_never_stack():
+    store = ChunkStore(DEFAULT_CONFIG, world_seed=31)
+    size = DEFAULT_CONFIG.chunk_size
+    contents = _clear_chunk(store, 3, 3)
+    tick_at = 5000
+    for _ in range(8):
+        store.respawn_pass((0, 0), tick=tick_at, config=DEFAULT_CONFIG)
+        tick_at += DEFAULT_CONFIG.respawn_cooldown_ticks + 1
+    chunk = store.get_chunk(3, 3)
+    spots = [(m.x, m.y) for m in contents.monsters]
+    assert len(spots) == len(set(spots))
+    for x, y in spots:
+        assert chunk.tiles[y - 3 * size, x - 3 * size] == int(Tile.FLOOR)
+
+
+def test_respawn_is_deterministic_for_a_seed():
+    def run():
+        store = ChunkStore(DEFAULT_CONFIG, world_seed=31)
+        contents = _clear_chunk(store, 3, 3)
+        store.respawn_pass((0, 0), tick=5000, config=DEFAULT_CONFIG)
+        return [(m.kind.key, m.x, m.y) for m in contents.monsters]
+
+    assert run() == run()

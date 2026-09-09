@@ -77,6 +77,25 @@ class Config:
     monster_sight_radius: int = 9  # Chebyshev; inside it a monster gives chase
     monster_wander_chance: float = 0.6  # P(an idle monster steps at all)
 
+    # the agent as a creature that can die (Phase 4)
+    agent_max_hp: int = 30
+    agent_attack: int = 5
+    agent_defense: int = 1
+    damage_variance: int = 2  # 0..this is added to every blow, seeded
+    monster_drop_chance: float = 0.35  # P(a corpse leaves something behind)
+    grave_glyph: str = "+"
+
+    # experience and growth
+    xp_per_tier: int = 8  # a kill is worth (tier + 1) * this
+    xp_level_base: int = 30  # xp from level 1 to level 2
+    xp_level_growth: float = 1.6  # each level costs this much more than the last
+    level_hp_gain: int = 6
+    level_attack_gain: int = 1
+
+    # respawn: a cleared chunk refills once the agent is well away from it
+    respawn_distance: int = 60  # tiles; nearer than this and nothing respawns
+    respawn_check_interval: int = 100  # ticks between respawn sweeps
+
     # memory decay: knowledge expires, so the world goes unknown again
     memory_ttl: int = 3000  # ticks before a tile is forgotten outright
     memory_prune_interval: int = 250  # ticks between pruner sweeps
