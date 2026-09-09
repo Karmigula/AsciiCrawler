@@ -219,3 +219,75 @@ def test_the_pruner_fires_on_its_interval_and_bounds_memory():
         tick(agent, world, rng, config)
     assert agent.pruned_total > 0
     assert len(agent.memory) <= seen_early * 4  # bounded, not ever-growing
+
+
+def test_monsters_outside_the_activation_radius_never_move():
+    """The dormancy invariant. If distant monsters moved, a chunk's contents
+    would depend on where the agent had wandered, not on its seed."""
+    from world.chunks import ChunkStore
+
+    world = ChunkStore(DEFAULT_CONFIG, world_seed=13)
+    spawn = world.spawn
+    agent = AgentState(x=spawn[0], y=spawn[1])
+    rng = random.Random(2)
+    for _ in range(30):  # let the world stream out around the agent
+        tick(agent, world, rng, DEFAULT_CONFIG)
+
+    radius = DEFAULT_CONFIG.activation_radius
+    distant = [
+        (monster, (monster.x, monster.y))
+        for chunk in [world.get_chunk(cx, cy) for cx in (-1, 0, 1) for cy in (-1, 0, 1)]
+        for monster in chunk.contents.monsters
+        if max(abs(monster.x - agent.x), abs(monster.y - agent.y)) > radius * 2
+    ]
+    assert distant, "no distant monsters to check"
+    for _ in range(60):
+        tick(agent, world, rng, DEFAULT_CONFIG)
+    for monster, was in distant:
+        if max(abs(monster.x - agent.x), abs(monster.y - agent.y)) > radius:
+            assert (monster.x, monster.y) == was
+
+
+def test_a_run_with_moving_monsters_is_still_deterministic():
+    from world.chunks import ChunkStore
+
+    def run():
+        world = ChunkStore(DEFAULT_CONFIG, world_seed=13)
+        spawn = world.spawn
+        agent = AgentState(x=spawn[0], y=spawn[1])
+        rng = random.Random(2)
+        for _ in range(120):
+            tick(agent, world, rng, DEFAULT_CONFIG)
+        positions = sorted(
+            (m.x, m.y)
+            for cx in (-1, 0, 1)
+            for cy in (-1, 0, 1)
+            for m in world.get_chunk(cx, cy).contents.monsters
+        )
+        return (agent.x, agent.y), positions
+
+    assert run() == run()
+
+
+def test_monsters_actually_move_when_the_agent_is_near():
+    from world.chunks import ChunkStore
+
+    world = ChunkStore(DEFAULT_CONFIG, world_seed=13)
+    spawn = world.spawn
+    agent = AgentState(x=spawn[0], y=spawn[1])
+    rng = random.Random(2)
+    before = {
+        id(m): (m.x, m.y)
+        for cx in (-1, 0, 1)
+        for cy in (-1, 0, 1)
+        for m in world.get_chunk(cx, cy).contents.monsters
+    }
+    for _ in range(80):
+        tick(agent, world, rng, DEFAULT_CONFIG)
+    after = {
+        id(m): (m.x, m.y)
+        for cx in (-1, 0, 1)
+        for cy in (-1, 0, 1)
+        for m in world.get_chunk(cx, cy).contents.monsters
+    }
+    assert any(before[k] != after[k] for k in before if k in after)

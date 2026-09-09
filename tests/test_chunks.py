@@ -306,3 +306,62 @@ def test_chunks_are_never_discarded():
     for cx in range(-4, 5):
         store.ensure_loaded((cx * SIZE + MID, MID))
     assert store.get_chunk(0, 0) is first  # same object, persistent world
+
+
+def _first_monster(store, cx, cy):
+    chunk = store.get_chunk(cx, cy)
+    return chunk.contents.monsters[0] if chunk.contents.monsters else None
+
+
+def test_a_monster_walking_over_a_chunk_edge_changes_owner():
+    """The migration trap: the chunk it left must stop finding it, and the
+    chunk it entered must start."""
+    store = ChunkStore(DEFAULT_CONFIG, world_seed=21)
+    size = DEFAULT_CONFIG.chunk_size
+    monster = None
+    for cx in range(6):  # find any chunk that actually holds a monster
+        monster = _first_monster(store, cx, 0)
+        if monster is not None:
+            break
+    assert monster is not None
+    source_key = store.chunk_coords(monster.x, monster.y)
+    destination_key = (source_key[0] + 1, source_key[1])
+    landing = (destination_key[0] * size + 3, monster.y)
+
+    store.move_entity(monster, *landing)
+
+    assert store.entity_at(*landing) is monster
+    assert store.chunk_coords(monster.x, monster.y) == destination_key
+    assert monster in store.get_chunk(*destination_key).contents.monsters
+    assert monster not in store.get_chunk(*source_key).contents.monsters
+    assert store.get_chunk(*source_key).contents.entity_at(*landing) is None
+
+
+def test_moving_inside_one_chunk_keeps_the_lookup_honest():
+    """The index is rebuilt on demand — a move must not leave a stale entry."""
+    store = ChunkStore(DEFAULT_CONFIG, world_seed=21)
+    monster = None
+    for cx in range(6):
+        monster = _first_monster(store, cx, 0)
+        if monster is not None:
+            break
+    assert monster is not None
+    was = (monster.x, monster.y)
+    store.entity_at(*was)  # force the index to be built before the move
+    store.move_entity(monster, was[0], was[1] + 1)
+    assert store.entity_at(*was) is None
+    assert store.entity_at(was[0], was[1] + 1) is monster
+
+
+def test_removing_a_monster_takes_it_out_of_the_lookup():
+    store = ChunkStore(DEFAULT_CONFIG, world_seed=21)
+    monster = None
+    for cx in range(6):
+        monster = _first_monster(store, cx, 0)
+        if monster is not None:
+            break
+    assert monster is not None
+    where = (monster.x, monster.y)
+    store.entity_at(*where)
+    store.remove_entity(monster)
+    assert store.entity_at(*where) is None

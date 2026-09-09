@@ -39,6 +39,7 @@ class Monster:
     x: int
     y: int
     hp: int
+    last_moved_tick: int = -1  # guards against acting twice in one tick
 
 
 @dataclass(frozen=True)

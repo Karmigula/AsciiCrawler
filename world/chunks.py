@@ -148,6 +148,30 @@ class ChunkStore:
         """The item lying on a global tile, if any."""
         return self.contents_at(x, y).item_at(x, y)
 
+    def move_entity(self, monster: Monster, x: int, y: int) -> None:
+        """Move a monster to a global tile, migrating it between chunks.
+
+        A monster that walks over a chunk edge has to change owners, or it
+        would keep being found by the chunk it left and never by the one it
+        entered. Both sides drop their position indexes; the destination chunk
+        is generated if it does not exist yet, because a monster cannot stand
+        in a chunk that was never made.
+        """
+        source = self.contents_at(monster.x, monster.y)
+        destination = self.contents_at(x, y)
+        monster.x, monster.y = x, y
+        if source is not destination:
+            source.monsters.remove(monster)
+            destination.monsters.append(monster)
+            source.invalidate()
+        destination.invalidate()
+
+    def remove_entity(self, monster: Monster) -> None:
+        """Take a monster out of the world (it died, or was never born)."""
+        contents = self.contents_at(monster.x, monster.y)
+        contents.monsters.remove(monster)
+        contents.invalidate()
+
     def active_entities(self, origin: Position, radius: int) -> list[Monster]:
         """Monsters inside the activation radius (Chebyshev, the agent's metric).
 

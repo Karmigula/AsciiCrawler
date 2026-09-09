@@ -12,9 +12,10 @@ through a wall.
 
 Two Phase 3 additions ride along. The pruner sweeps expired memory on its own
 interval, which is what keeps the belief dict bounded over a long run. And the
-active-entity scan collects the monsters inside `activation_radius` each tick:
-they are frozen decor until Phase 4, but the scan is the seam the AI hangs off,
-and its cost is bounded by the radius rather than by the size of the world.
+active-entity scan collects the monsters inside `activation_radius` each tick,
+and those monsters then take their turn (`sim.ai`). Only the active set moves:
+that is what keeps a chunk's contents a function of its seed rather than of
+wherever the agent has previously wandered.
 
 Agent position is unbounded global coordinates; nothing here knows about
 chunk boundaries.
@@ -27,6 +28,7 @@ from agent.fov import compute_fov
 from agent.goals import DIRS_8, ExploreGoal
 from agent.memory import Memory
 from config import Config
+from sim.ai import take_turns
 
 
 @dataclass
@@ -52,6 +54,7 @@ def tick(agent: AgentState, world, rng: random.Random, config: Config) -> None:
     _observe(agent, world, config)
     _forget(agent, config)
     _scan_active(agent, world, config)
+    _monsters_act(agent, world, rng, config)
     _think(agent, rng, config)
 
 
@@ -150,6 +153,15 @@ def _scan_active(agent: AgentState, world, config: Config) -> None:
     if scan is None:
         return
     agent.active_entities = scan((agent.x, agent.y), config.activation_radius)
+
+
+def _monsters_act(agent: AgentState, world, rng: random.Random, config: Config) -> None:
+    """Give the active monsters their turn. Worlds without them just skip it."""
+    if not agent.active_entities or not hasattr(world, "move_entity"):
+        return
+    take_turns(
+        (agent.x, agent.y), agent.active_entities, world, rng, config, agent.tick_count
+    )
 
 
 def _think(agent: AgentState, rng: random.Random, config: Config) -> None:

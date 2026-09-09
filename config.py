@@ -72,6 +72,11 @@ class Config:
     respawn_cooldown_ticks: int = 1500  # per chunk, once the agent is far
     respawn_cap_per_chunk: int = 24  # Phase 4 respawn ceiling, not a spawn cap
 
+    # monster behaviour (Phase 4). Speed is ticks-per-move, so a monster acts
+    # on ticks where tick % speed == 0: speed 1 every tick, speed 2 every other.
+    monster_sight_radius: int = 9  # Chebyshev; inside it a monster gives chase
+    monster_wander_chance: float = 0.6  # P(an idle monster steps at all)
+
     # memory decay: knowledge expires, so the world goes unknown again
     memory_ttl: int = 3000  # ticks before a tile is forgotten outright
     memory_prune_interval: int = 250  # ticks between pruner sweeps
