@@ -148,3 +148,58 @@ def test_blocked_plan_rethinks_immediately():
     goal.decide((1, 1), memory, random.Random(7), DEFAULT_CONFIG)
     goal.drop_plan()  # physics refused a step
     assert goal.wants_rethink(memory, tick=1, throttle_ticks=5)
+
+
+def test_explore_looks_past_the_sample_when_everything_near_is_walled_off():
+    """Candidates are sampled by straight-line distance, which says nothing
+    about reachability: a sealed pocket can own every nearby frontier tile
+    while the only reachable frontier lies far down a corridor. Yielding there
+    would falsely report 'nowhere left to go'."""
+    from dataclasses import replace
+
+    from agent.memory import Memory
+    from world.tiles import Tile
+
+    observation = {}
+    # A sealed room the agent stands in, fully seen, so it offers no frontier.
+    for y in range(0, 9):
+        for x in range(0, 9):
+            observation[(x, y)] = Tile.FLOOR
+    for y in range(-1, 10):
+        observation[(-1, y)] = Tile.WALL
+        observation[(9, y)] = Tile.WALL
+    for x in range(-1, 10):
+        observation[(x, -1)] = Tile.WALL
+        observation[(x, 9)] = Tile.WALL
+    # One way out: a long walled corridor south, ending in open frontier.
+    observation[(4, 9)] = Tile.FLOOR
+    for y in range(9, 41):
+        observation[(4, y)] = Tile.FLOOR
+        observation[(3, y)] = Tile.WALL
+        observation[(5, y)] = Tile.WALL
+    # A sealed pocket to the east, closer in a straight line than the corridor
+    # end, whose eastern edge borders unseen ground and so reads as frontier.
+    for y in range(2, 7):
+        for x in range(12, 17):
+            observation[(x, y)] = Tile.FLOOR
+    for y in range(1, 8):
+        observation[(11, y)] = Tile.WALL
+    for x in range(11, 17):
+        observation[(x, 1)] = Tile.WALL
+        observation[(x, 7)] = Tile.WALL
+
+    memory = Memory()
+    memory.observe(observation, tick=1)
+
+    near = sorted(
+        frontier(memory), key=lambda p: max(abs(p[0] - 4), abs(p[1] - 4))
+    )[:4]
+    assert all(p[0] >= 12 for p in near), "setup: the near sample must be the pocket"
+
+    config = replace(DEFAULT_CONFIG, frontier_sample_size=4, explore_noise=0.0)
+    goal = ExploreGoal()
+    decision = goal.decide((4, 4), memory, random.Random(1), config, tick=2)
+
+    assert decision is not None, "reachable frontier existed but the goal yielded"
+    assert not goal.yielded
+    assert goal.target == (4, 40)  # the corridor end, past the sample

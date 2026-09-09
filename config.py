@@ -96,6 +96,16 @@ class Config:
     respawn_distance: int = 60  # tiles; nearer than this and nothing respawns
     respawn_check_interval: int = 100  # ticks between respawn sweeps
 
+    # fear: threat read off memory, never off world truth
+    threat_radius: int = 10  # tiles; remembered monsters further out are ignored
+    w_threat: float = 2.5  # how hard threat discounts an EXPLORE candidate
+    # 1.5 at full health means: fight rats, goblins and orcs; keep away from a
+    # troll within 2 tiles and a dragon within 4. Scaled by hp, so a wounded
+    # agent runs from things it would have swung at.
+    flee_threat: float = 1.5
+    flee_search_radius: int = 7  # how far FLEE looks for a safer tile
+    flee_release: float = 0.6  # stop fleeing below this fraction of the trigger
+
     # memory decay: knowledge expires, so the world goes unknown again
     memory_ttl: int = 3000  # ticks before a tile is forgotten outright
     memory_prune_interval: int = 250  # ticks between pruner sweeps

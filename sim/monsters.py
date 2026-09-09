@@ -34,6 +34,10 @@ MONSTERS: tuple[MonsterKind, ...] = (
 
 MAX_TIER = max(kind.tier for kind in MONSTERS)
 
+BY_GLYPH: dict[str, MonsterKind] = {kind.glyph: kind for kind in MONSTERS}
+"""Glyph -> kind. The agent remembers glyphs, not objects, so this is how the
+brain prices what it saw: memory holds a snapshot, never a monster."""
+
 
 def table_for_tier(max_tier: int) -> tuple[MonsterKind, ...]:
     """Every kind up to `max_tier` — the roll table at a given depth."""

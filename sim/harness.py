@@ -41,6 +41,7 @@ class SimStats:
     monsters_seen: int  # peak size of the bounded active-entity scan
     frontier_starved_ticks: int  # ticks with no frontier left to aim at
     decisions: int  # EXPLORE decisions made
+    flights: int  # FLEE decisions taken
     kills: int  # monsters the agent killed
     deaths: int  # times the agent died and started over
     damage_taken: int  # total hp lost across the run
@@ -80,6 +81,7 @@ def run_ticks(n: int, seed: int, config: Config = DEFAULT_CONFIG) -> SimStats:
         monsters_seen=monsters_seen,
         frontier_starved_ticks=starved,
         decisions=agent.explorer.decisions,
+        flights=agent.fleer.flights,
         kills=agent.kills,
         deaths=agent.deaths,
         damage_taken=agent.damage_taken,

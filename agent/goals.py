@@ -1,4 +1,4 @@
-"""Utility goals. EXPLORE is the first (and so far only) one implemented.
+"""Utility goals: EXPLORE, and FLEE which can take the wheel off it.
 
 EXPLORE scores frontier candidates with
     score = w_explore * info_gain / (1 + path_cost)
@@ -12,6 +12,17 @@ Hysteresis keeps the incumbent target from being dithered away by a
 near-tied challenger, and small seeded noise breaks exact ties between
 identical candidates.
 
+FLEE is an override rather than another scored option. A utility comparison
+between "look at something new" and "do not die" invites the agent to be
+talked into a slightly better exploration score while a troll eats it; making
+fear pre-empt the score instead means the decision is legible from outside,
+which is the point of an aquarium. It releases on hysteresis (flee_release) so
+the agent does not flicker on the threshold.
+
+Threat enters EXPLORE as a discount on each candidate, so the agent prefers
+frontier away from what it remembers even when it is not frightened enough to
+run. Both read the threat field, which reads memory — see agent/threat.py.
+
 Everything here reads memory only — the world grid is invisible to goals.
 """
 
@@ -20,6 +31,7 @@ from dataclasses import dataclass, field
 
 from agent.memory import Memory, Position
 from agent.pathing import DIRS_8, distances, rebuild_path
+from agent.threat import danger, flee_threshold
 from config import Config
 
 Decision = tuple[Position, list[Position]]  # (target, steps after start)
@@ -72,26 +84,24 @@ class ExploreGoal:
         Yields (returns None, clears the plan) when no frontier exists or no
         candidate is reachable in belief — the caller falls back to wandering.
         """
-        candidates = frontier(memory)
-        if candidates:
+        all_frontier = frontier(memory)
+        best: Position | None = None
+        came_from: dict[Position, Position] = {}
+        if all_frontier:
             sx, sy = start
-            candidates.sort(key=lambda p: (max(abs(p[0] - sx), abs(p[1] - sy)), p))
-            del candidates[config.frontier_sample_size:]
-            cost, came_from = distances(memory, start, targets=candidates)
-            best: Position | None = None
-            best_score = float("-inf")
-            for cand in candidates:
-                path_cost = cost.get(cand)
-                if path_cost is None:
-                    continue
-                score = config.w_explore * info_gain(memory, cand) / (1.0 + path_cost)
-                if cand == self.target:
-                    score += config.explore_hysteresis_bonus
-                score += rng.uniform(-config.explore_noise, config.explore_noise)
-                if score > best_score:
-                    best, best_score = cand, score
-        else:
-            best = None
+            all_frontier.sort(key=lambda p: (max(abs(p[0] - sx), abs(p[1] - sy)), p))
+            sample = all_frontier[: config.frontier_sample_size]
+            best, came_from = self._best_of(sample, start, memory, rng, config)
+            if best is None and len(all_frontier) > len(sample):
+                # Every nearby candidate was unreachable in belief. The sample
+                # is taken by straight-line distance, so that says nothing
+                # about the frontier beyond it — a wall the agent has not yet
+                # found a way around puts the whole neighbourhood out of reach
+                # while perfectly good frontier waits behind it. Pay for the
+                # full sweep rather than falsely report nowhere left to go.
+                best, came_from = self._best_of(
+                    all_frontier, start, memory, rng, config
+                )
         self._last_decision_tick = tick
         self._decided_at_generation = memory.generation
         self._ever_decided = True
@@ -105,6 +115,24 @@ class ExploreGoal:
         self.path = rebuild_path(came_from, best, start)
         self.yielded = False
         return best, self.path
+
+    def _best_of(self, candidates, start, memory, rng, config):
+        """Score a candidate list; return (best, came_from) or (None, {})."""
+        cost, came_from = distances(memory, start, targets=candidates)
+        best: Position | None = None
+        best_score = float("-inf")
+        for cand in candidates:
+            path_cost = cost.get(cand)
+            if path_cost is None:
+                continue
+            score = config.w_explore * info_gain(memory, cand) / (1.0 + path_cost)
+            score -= config.w_threat * danger(memory, cand, config)
+            if cand == self.target:
+                score += config.explore_hysteresis_bonus
+            score += rng.uniform(-config.explore_noise, config.explore_noise)
+            if score > best_score:
+                best, best_score = cand, score
+        return best, came_from
 
     def drop_plan(self) -> None:
         """Event hook for a blocked path: forget the plan, keep the incumbent."""
@@ -127,3 +155,69 @@ class ExploreGoal:
             tick - self._last_decision_tick >= throttle_ticks
             and memory.generation != self._decided_at_generation
         )
+
+
+@dataclass
+class FleeGoal:
+    """Get away from what the agent believes is dangerous. Overrides EXPLORE."""
+
+    active: bool = False
+    path: list[Position] = field(default_factory=list)
+    flights: int = 0
+
+    def wants_control(self, start: Position, memory: Memory, stats, config: Config) -> bool:
+        """True while the believed danger here is more than the agent will take.
+
+        Hysteresis on release: once running, it keeps running until danger
+        drops well under the trigger, so the agent does not stutter in and out
+        of flight on the boundary.
+        """
+        here = danger(memory, start, config)
+        threshold = flee_threshold(stats, config)
+        if self.active:
+            return here > threshold * config.flee_release
+        return here > threshold
+
+    def decide(self, start: Position, memory: Memory, config: Config) -> list[Position]:
+        """Walk believed-passable ground to the calmest tile within reach.
+
+        A local breadth-first sweep, not a path to safety in general: fleeing
+        is a decision that has to be remade constantly as the picture changes,
+        so paying for a long plan would be waste.
+        """
+        self.active = True
+        best, best_key, came_from = start, None, {}
+        seen = {start}
+        queue = [(start, 0)]
+        while queue:
+            coord, depth = queue.pop(0)
+            key = (danger(memory, coord, config), -depth, coord)
+            if best_key is None or key < best_key:
+                best, best_key = coord, key
+            if depth >= config.flee_search_radius:
+                continue
+            x, y = coord
+            for dx, dy in DIRS_8:
+                nxt = (x + dx, y + dy)
+                if nxt in seen or not memory.believes_passable(nxt):
+                    continue
+                if dx and dy and not (
+                    memory.believes_passable((x + dx, y))
+                    and memory.believes_passable((x, y + dy))
+                ):
+                    continue
+                seen.add(nxt)
+                came_from[nxt] = coord
+                queue.append((nxt, depth + 1))
+        self.path = rebuild_path(came_from, best, start) if best != start else []
+        self.flights += 1
+        return self.path
+
+    def stand_down(self) -> None:
+        """Danger has passed: hand control back to EXPLORE."""
+        self.active = False
+        self.path = []
+
+    def drop_plan(self) -> None:
+        """Blocked mid-flight: forget the route, keep running."""
+        self.path = []

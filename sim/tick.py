@@ -25,7 +25,7 @@ import random
 from dataclasses import dataclass, field
 
 from agent.fov import compute_fov
-from agent.goals import DIRS_8, ExploreGoal
+from agent.goals import DIRS_8, ExploreGoal, FleeGoal
 from agent.memory import Memory
 from config import Config
 from agent.stats import Stats
@@ -43,6 +43,7 @@ class AgentState:
     y: int
     memory: Memory = field(default_factory=Memory)
     explorer: ExploreGoal = field(default_factory=ExploreGoal)
+    fleer: FleeGoal = field(default_factory=FleeGoal)
     tick_count: int = 0
     active_entities: list = field(default_factory=list)
     pruned_total: int = 0
@@ -70,11 +71,12 @@ def tick(agent: AgentState, world, rng: random.Random, config: Config) -> None:
 
 
 def _act(agent: AgentState, world, rng: random.Random, config: Config) -> None:
-    if agent.explorer.path:
-        if _try_step(agent, agent.explorer.path[0], world, rng, config):
-            agent.explorer.path.pop(0)
+    driver = agent.fleer if agent.fleer.active else agent.explorer
+    if driver.path:
+        if _try_step(agent, driver.path[0], world, rng, config):
+            driver.path.pop(0)
         else:
-            agent.explorer.drop_plan()  # blocked: physics disagrees with belief
+            driver.drop_plan()  # blocked: physics disagrees with belief
         return
     # idle fallback: wander to a believed-passable neighbour, corner-cut safe
     options = [
@@ -145,9 +147,15 @@ def _resolve_death(agent: AgentState, world, config: Config) -> None:
         world.drop_item(GRAVE, agent.x, agent.y)
     agent.deaths += 1
     agent.stats = Stats.starting(config)
+    agent.fleer.stand_down()
     spawn = getattr(world, "spawn", (agent.x, agent.y))
     agent.x, agent.y = spawn
     agent.explorer.drop_plan()
+    # Look before thinking. The body has just been moved across the world, so
+    # the observation taken earlier this tick describes somewhere else — and a
+    # brain that decides from an unobserved tile does not believe its own feet
+    # are on solid ground, which strands it with an empty reachable set.
+    _observe(agent, world, config)
 
 
 def _respawn_pass(agent: AgentState, world, config: Config) -> None:
@@ -229,8 +237,21 @@ def _monsters_act(agent: AgentState, world, rng: random.Random, config: Config) 
 
 
 def _think(agent: AgentState, rng: random.Random, config: Config) -> None:
+    """Fear first, curiosity second.
+
+    FLEE pre-empts rather than competing on score: a utility comparison would
+    let a good enough exploration prospect talk the agent into standing next
+    to a troll, and "why is it doing that" should be answerable by looking.
+    """
+    here = (agent.x, agent.y)
+    if agent.fleer.wants_control(here, agent.memory, agent.stats, config):
+        agent.explorer.drop_plan()
+        agent.fleer.decide(here, agent.memory, config)
+        return
+    if agent.fleer.active:
+        agent.fleer.stand_down()
     if not agent.explorer.wants_rethink(
         agent.memory, agent.tick_count, config.explore_throttle_ticks
     ):
         return
-    agent.explorer.decide((agent.x, agent.y), agent.memory, rng, config, agent.tick_count)
+    agent.explorer.decide(here, agent.memory, rng, config, agent.tick_count)

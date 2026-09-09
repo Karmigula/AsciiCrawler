@@ -375,3 +375,47 @@ def test_the_agent_gets_its_stats_without_being_handed_them():
     assert agent.stats is None
     tick(agent, FiniteWorld(_open_field()), random.Random(1), DEFAULT_CONFIG)
     assert agent.stats.hp == DEFAULT_CONFIG.agent_max_hp
+
+
+def test_after_death_the_agent_has_looked_at_where_it_woke_up():
+    """A brain deciding from an unobserved tile does not believe its own feet
+    are on solid ground, and strands itself with nothing reachable."""
+    world = PopulatedWorld(_open_field(), [_monster(21, 20, "D")])
+    agent = AgentState(x=20, y=20)
+    rng = random.Random(1)
+    tick(agent, world, rng, DEFAULT_CONFIG)
+    agent.stats.hp = 1
+    for _ in range(30):
+        tick(agent, world, rng, DEFAULT_CONFIG)
+        if agent.deaths:
+            break
+    assert agent.deaths == 1
+    assert agent.memory.believes_passable((agent.x, agent.y))
+
+
+def test_fear_takes_the_wheel_off_exploration():
+    """A dragon in view should move the agent away, whatever EXPLORE wanted."""
+    world = PopulatedWorld(_open_field(), [_monster(24, 20, "D")])
+    agent = AgentState(x=20, y=20)
+    rng = random.Random(5)
+    tick(agent, world, rng, DEFAULT_CONFIG)  # look, and see the dragon
+    assert agent.memory.snapshot((24, 20))[0] == "D"
+    assert agent.fleer.active, "a dragon four tiles away should trigger flight"
+    before = agent.x
+    for _ in range(6):
+        tick(agent, world, rng, DEFAULT_CONFIG)
+    assert agent.x < before  # ground given, away from the dragon
+
+
+def test_the_agent_goes_back_to_exploring_once_it_is_calm():
+    world = PopulatedWorld(_open_field(), [_monster(24, 20, "D")])
+    agent = AgentState(x=20, y=20)
+    rng = random.Random(5)
+    tick(agent, world, rng, DEFAULT_CONFIG)
+    assert agent.fleer.active
+    world.monsters.clear()
+    for _ in range(DEFAULT_CONFIG.memory_ttl + 5):
+        tick(agent, world, rng, DEFAULT_CONFIG)
+        if not agent.fleer.active:
+            break
+    assert not agent.fleer.active
