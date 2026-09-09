@@ -99,6 +99,23 @@ class Config:
     # loot: affixes and how nasty the rolls get
     curse_chance: float = 0.22  # P(an affix slot rolls a curse instead)
 
+    # how the agent prices a loadout. These weights are what an "archetype"
+    # is made of: change them and the creature starts wanting different gear.
+    v_attack: float = 1.0
+    v_defense: float = 1.2
+    v_max_hp: float = 0.25
+    v_fov: float = 1.5  # a wider view is worth a lot to something exploring
+    v_memory: float = 0.0008  # per tick of TTL
+    v_explore: float = 2.0
+    v_trigger: float = 0.8  # per point of trigger amount
+    v_flee_penalty: float = 0.5  # recklessness is priced, not free
+    equip_margin: float = 0.5  # score gain needed to bother swapping gear
+    potion_heal: int = 12
+    potion_at_hp_fraction: float = 0.45  # drink when this hurt, not before
+    w_loot: float = 1.4  # how loud a remembered item calls
+    loot_expectation: float = 3.0  # assumed upgrade from an unknown slot item
+    backpack_size: int = 6
+
     # traps: hidden until spotted or sprung
     trap_glyph: str = "^"
     trap_damage: int = 6
@@ -113,7 +130,11 @@ class Config:
     # agent runs from things it would have swung at.
     flee_threat: float = 1.5
     flee_search_radius: int = 7  # how far FLEE looks for a safer tile
-    flee_release: float = 0.6  # stop fleeing below this fraction of the trigger
+    # Stop fleeing below this fraction of the trigger. 0.6 produced flicker:
+    # 235 flights averaging 2.2 ticks over 3000, the agent bouncing off the
+    # same monster again and again. 0.35 gives 3 flights averaging 18 ticks
+    # and half again as many kills - fewer, longer, legible flights.
+    flee_release: float = 0.35
 
     # memory decay: knowledge expires, so the world goes unknown again
     memory_ttl: int = 3000  # ticks before a tile is forgotten outright

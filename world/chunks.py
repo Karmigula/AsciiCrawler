@@ -199,6 +199,15 @@ class ChunkStore:
         contents.invalidate()
         return item
 
+    def take_item(self, x: int, y: int):
+        """Lift the item on a global tile, if any, and return it."""
+        contents = self.contents_at(x, y)
+        item = contents.item_at(x, y)
+        if item is not None:
+            contents.items.remove(item)
+            contents.invalidate()
+        return item
+
     def respawn_pass(self, agent_pos: Position, tick: int, config: Config) -> int:
         """Refill thinned-out chunks the agent is well away from. Returns adds.
 

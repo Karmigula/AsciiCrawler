@@ -33,6 +33,9 @@ from agent.memory import Memory, Position
 from agent.pathing import DIRS_8, distances, rebuild_path
 from agent.threat import danger, flee_threshold
 from config import Config
+from sim.items import ITEMS
+
+ITEM_BY_GLYPH = {kind.glyph: kind for kind in ITEMS}
 
 Decision = tuple[Position, list[Position]]  # (target, steps after start)
 
@@ -185,6 +188,8 @@ class FleeGoal:
         is a decision that has to be remade constantly as the picture changes,
         so paying for a long plan would be waste.
         """
+        if not self.active:
+            self.flights += 1  # count flights, not ticks spent running
         self.active = True
         best, best_key, came_from = start, None, {}
         seen = {start}
@@ -210,7 +215,6 @@ class FleeGoal:
                 came_from[nxt] = coord
                 queue.append((nxt, depth + 1))
         self.path = rebuild_path(came_from, best, start) if best != start else []
-        self.flights += 1
         return self.path
 
     def stand_down(self) -> None:
@@ -221,3 +225,83 @@ class FleeGoal:
     def drop_plan(self) -> None:
         """Blocked mid-flight: forget the route, keep running."""
         self.path = []
+
+
+def expected_upgrade(glyph: str, equipped: dict, config: Config) -> float:
+    """What the agent *guesses* a remembered item is worth, from its glyph alone.
+
+    This is the belief rule applied to loot. Memory holds a glyph, not an item:
+    the agent knows there is a weapon over there, not that it is a cruel sword
+    of the long mind. So LOOT prices an empty slot highly and a filled one
+    modestly, and the agent walks over to find out - which is exactly how a
+    creature without x-ray vision would behave.
+    """
+    kind = ITEM_BY_GLYPH.get(glyph)
+    if kind is None:
+        return 0.0
+    if kind.slot is None:
+        return config.loot_expectation * 0.5  # a potion is always some use
+    if equipped.get(kind.slot) is None:
+        return config.loot_expectation * 2.0  # an empty slot is a real prize
+    return config.loot_expectation
+
+
+@dataclass
+class LootGoal:
+    """Go and pick up something the agent believes is lying around."""
+
+    target: Position | None = None
+    path: list[Position] = field(default_factory=list)
+    pickups: int = 0
+
+    def decide(
+        self,
+        start: Position,
+        memory: Memory,
+        equipped: dict,
+        config: Config,
+    ) -> Decision | None:
+        """Score remembered items by expected upgrade over path cost.
+
+        Only tiles memory still holds an item snapshot for are considered, so
+        loot the agent has forgotten stops calling to it - decay applies to
+        greed as much as to geography.
+        """
+        candidates = []
+        for coord in memory.known():
+            glyph = memory.snapshot(coord)[1]
+            if glyph is None:
+                continue
+            value = expected_upgrade(glyph, equipped, config)
+            if value > 0:
+                candidates.append((coord, value))
+        if not candidates:
+            self.target, self.path = None, []
+            return None
+        sx, sy = start
+        candidates.sort(key=lambda c: (max(abs(c[0][0] - sx), abs(c[0][1] - sy)), c[0]))
+        del candidates[config.frontier_sample_size:]
+        cost, came_from = distances(
+            memory, start, targets=[coord for coord, _ in candidates]
+        )
+        best, best_score = None, 0.0
+        for coord, value in candidates:
+            path_cost = cost.get(coord)
+            if path_cost is None:
+                continue
+            score = config.w_loot * value / (1.0 + path_cost)
+            score -= config.w_threat * danger(memory, coord, config)
+            if score > best_score:
+                best, best_score = coord, score
+        if best is None:
+            self.target, self.path = None, []
+            return None
+        self.target = best
+        self.path = rebuild_path(came_from, best, start)
+        return best, self.path
+
+    def drop_plan(self) -> None:
+        self.path = []
+
+    def clear(self) -> None:
+        self.target, self.path = None, []

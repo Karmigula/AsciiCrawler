@@ -21,6 +21,7 @@ import random
 from dataclasses import dataclass
 
 from config import DEFAULT_CONFIG, Config
+from agent.loadout import archetype
 from sim.tick import AgentState, tick
 from world.chunks import ChunkStore
 
@@ -41,7 +42,10 @@ class SimStats:
     monsters_seen: int  # peak size of the bounded active-entity scan
     frontier_starved_ticks: int  # ticks with no frontier left to aim at
     decisions: int  # EXPLORE decisions made
-    flights: int  # FLEE decisions taken
+    flights: int  # times the agent broke into flight (not ticks spent running)
+    pickups: int  # items lifted off the floor
+    gold: int
+    archetype: str  # what the build turned into
     traps_found: int  # traps spotted before stepping in them
     traps_sprung: int  # ...and traps discovered the hard way
     kills: int  # monsters the agent killed
@@ -84,6 +88,9 @@ def run_ticks(n: int, seed: int, config: Config = DEFAULT_CONFIG) -> SimStats:
         frontier_starved_ticks=starved,
         decisions=agent.explorer.decisions,
         flights=agent.fleer.flights,
+        pickups=agent.pickups,
+        gold=agent.gold,
+        archetype=archetype(agent.derived, config) if agent.derived else "none",
         traps_found=agent.traps_found,
         traps_sprung=agent.traps_sprung,
         kills=agent.kills,

@@ -146,9 +146,10 @@ def test_tick_refuses_to_step_into_liquid():
 class PopulatedWorld(FiniteWorld):
     """Finite world that also answers the entity questions a chunk store does."""
 
-    def __init__(self, tiles, monsters=None) -> None:
+    def __init__(self, tiles, monsters=None, items=None) -> None:
         super().__init__(tiles)
         self.monsters = list(monsters or [])
+        self.items = list(items or [])
         self.dropped = []
 
     def entity_at(self, x, y):
@@ -158,6 +159,9 @@ class PopulatedWorld(FiniteWorld):
         return None
 
     def item_at(self, x, y):
+        for item in self.items:
+            if (item.x, item.y) == (x, y):
+                return item
         return None
 
     def remove_entity(self, monster):
@@ -165,6 +169,13 @@ class PopulatedWorld(FiniteWorld):
 
     def drop_item(self, kind, x, y, rng=None):
         self.dropped.append((kind.key, x, y))
+
+    def take_item(self, x, y):
+        for item in self.items:
+            if (item.x, item.y) == (x, y):
+                self.items.remove(item)
+                return item
+        return None
 
     @property
     def spawn(self):
@@ -419,3 +430,134 @@ def test_the_agent_goes_back_to_exploring_once_it_is_calm():
         if not agent.fleer.active:
             break
     assert not agent.fleer.active
+
+
+def _loot(base, x, y, *affix_keys):
+    from sim.affixes import BY_KEY
+    from sim.items import ITEMS
+    from world.populate import Item
+
+    kinds = {k.key: k for k in ITEMS}
+    return Item(
+        kind=kinds[base],
+        x=x,
+        y=y,
+        rarity="rare",
+        affixes=tuple(BY_KEY[k] for k in affix_keys),
+    )
+
+
+def _walk_onto(agent, world, config, target, rng=None):
+    agent.explorer.path = [target]
+    agent.looter.clear()
+    tick(agent, world, rng or random.Random(1), config)
+
+
+def test_walking_over_a_weapon_picks_it_up_and_wears_it():
+    sword = _loot("weapon", 21, 20, "cruel")
+    world = PopulatedWorld(_open_field(), items=[sword])
+    agent = AgentState(x=20, y=20)
+    _walk_onto(agent, world, DEFAULT_CONFIG, (21, 20))
+    assert agent.pickups == 1
+    assert agent.equipped.get("weapon") is sword
+    assert sword not in world.items
+
+
+def test_gold_and_potions_are_counted_not_worn():
+    world = PopulatedWorld(
+        _open_field(), items=[_loot("gold", 21, 20), _loot("potion", 22, 20)]
+    )
+    agent = AgentState(x=20, y=20)
+    rng = random.Random(1)
+    _walk_onto(agent, world, DEFAULT_CONFIG, (21, 20), rng)
+    _walk_onto(agent, world, DEFAULT_CONFIG, (22, 20), rng)
+    assert agent.gold == 1
+    assert agent.potions == 1
+    assert agent.equipped == {}
+
+
+def test_a_grave_is_scenery_not_loot():
+    from sim.items import GRAVE
+    from world.populate import Item
+
+    grave = Item(kind=GRAVE, x=21, y=20)
+    world = PopulatedWorld(_open_field(), items=[grave])
+    agent = AgentState(x=20, y=20)
+    _walk_onto(agent, world, DEFAULT_CONFIG, (21, 20))
+    assert agent.equipped == {}
+    assert agent.backpack == []
+
+
+def test_a_worse_item_goes_in_the_backpack_not_on_the_body():
+    good = _loot("weapon", 21, 20, "cruel")
+    poor = _loot("weapon", 22, 20, "dull")
+    world = PopulatedWorld(_open_field(), items=[good, poor])
+    agent = AgentState(x=20, y=20)
+    rng = random.Random(1)
+    _walk_onto(agent, world, DEFAULT_CONFIG, (21, 20), rng)
+    _walk_onto(agent, world, DEFAULT_CONFIG, (22, 20), rng)
+    assert agent.equipped["weapon"] is good
+    assert poor in agent.backpack
+
+
+def test_the_backpack_does_not_grow_without_limit():
+    from dataclasses import replace
+
+    config = replace(DEFAULT_CONFIG, backpack_size=2)
+    spares = [_loot("weapon", 21 + i, 20, "dull") for i in range(5)]
+    world = PopulatedWorld(_open_field(), items=spares)
+    agent = AgentState(x=20, y=20)
+    rng = random.Random(1)
+    for i in range(5):
+        _walk_onto(agent, world, config, (21 + i, 20), rng)
+    assert len(agent.backpack) <= config.backpack_size
+
+
+def test_a_potion_is_drunk_when_hurt_and_not_before():
+    world = PopulatedWorld(_open_field(), items=[_loot("potion", 21, 20)])
+    agent = AgentState(x=20, y=20)
+    _walk_onto(agent, world, DEFAULT_CONFIG, (21, 20))
+    assert agent.potions == 1  # healthy: kept for later
+    agent.stats.hp = 5
+    tick(agent, world, random.Random(1), DEFAULT_CONFIG)
+    assert agent.potions == 0
+    assert agent.stats.hp > 5
+
+
+def test_mind_altering_gear_actually_reaches_the_field_of_view():
+    """A farsighted ring must widen what the tick observes, not just a number."""
+    plain = AgentState(x=20, y=20)
+    tick(plain, FiniteWorld(_open_field()), random.Random(1), DEFAULT_CONFIG)
+    narrow = len(plain.memory)
+
+    ring = _loot("ring", 20, 20, "farsighted")
+    world = PopulatedWorld(_open_field(), items=[ring])
+    wide = AgentState(x=20, y=20)
+    tick(wide, world, random.Random(1), DEFAULT_CONFIG)  # picks the ring up
+    assert wide.equipped.get("ring") is ring
+    before = len(wide.memory)
+    tick(wide, world, random.Random(1), DEFAULT_CONFIG)
+    assert len(wide.memory) - before > 0
+    assert wide.derived.fov_radius == DEFAULT_CONFIG.fov_radius + 3
+    assert len(wide.memory) > narrow
+
+
+def test_loot_becomes_the_goal_when_something_is_remembered():
+    world = PopulatedWorld(_open_field(), items=[_loot("weapon", 26, 20, "cruel")])
+    agent = AgentState(x=20, y=20)
+    rng = random.Random(3)
+    for _ in range(4):
+        tick(agent, world, rng, DEFAULT_CONFIG)
+    assert agent.memory.snapshot((26, 20))[1] == ")"
+    assert agent.goal_name == "LOOT"
+
+
+def test_the_agent_eventually_reaches_loot_it_set_out_for():
+    world = PopulatedWorld(_open_field(), items=[_loot("weapon", 26, 20, "cruel")])
+    agent = AgentState(x=20, y=20)
+    rng = random.Random(3)
+    for _ in range(40):
+        tick(agent, world, rng, DEFAULT_CONFIG)
+        if agent.equipped.get("weapon") is not None:
+            break
+    assert agent.equipped.get("weapon") is not None

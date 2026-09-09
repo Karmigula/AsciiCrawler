@@ -23,6 +23,7 @@ import random
 from agent.pathing import DIRS_8
 from config import Config
 from sim.combat import monster_hits_agent
+from sim.perks import on_hit_taken
 
 Position = tuple[int, int]
 
@@ -53,7 +54,16 @@ def take_turns(
         if target is None:
             continue
         if target == agent_pos and agent.stats.alive:
-            damage += monster_hits_agent(monster, agent.stats, rng, config)
+            landed = monster_hits_agent(monster, agent.stats, rng, config)
+            damage += landed
+            derived = getattr(agent, "derived", None)
+            if derived is not None:
+                on_hit_taken(derived, monster, landed)
+                if monster.hp <= 0:
+                    # Thorns can kill: a rat that keeps biting armour it cannot
+                    # hurt eventually finishes itself off.
+                    world.remove_entity(monster)
+                    agent.kills += 1
             continue
         _step(monster, target, agent_pos, world)
     return damage
