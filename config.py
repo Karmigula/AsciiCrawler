@@ -96,6 +96,9 @@ class Config:
     respawn_distance: int = 60  # tiles; nearer than this and nothing respawns
     respawn_check_interval: int = 100  # ticks between respawn sweeps
 
+    # loot: affixes and how nasty the rolls get
+    curse_chance: float = 0.22  # P(an affix slot rolls a curse instead)
+
     # traps: hidden until spotted or sprung
     trap_glyph: str = "^"
     trap_damage: int = 6

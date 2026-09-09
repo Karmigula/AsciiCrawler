@@ -163,7 +163,7 @@ class PopulatedWorld(FiniteWorld):
     def remove_entity(self, monster):
         self.monsters.remove(monster)
 
-    def drop_item(self, kind, x, y):
+    def drop_item(self, kind, x, y, rng=None):
         self.dropped.append((kind.key, x, y))
 
     @property

@@ -48,7 +48,15 @@ import numpy as np
 
 from config import Config, DEFAULT_CONFIG
 from world import gen_bsp, gen_cave, gen_cavern
-from world.populate import ChunkContents, Item, Monster, populate, try_respawn
+from sim.items import roll_for
+from world.populate import (
+    ChunkContents,
+    Item,
+    Monster,
+    depth_fraction,
+    populate,
+    try_respawn,
+)
 from world.tiles import Tile
 
 ChunkKey = tuple[int, int]
@@ -173,10 +181,20 @@ class ChunkStore:
         contents.monsters.remove(monster)
         contents.invalidate()
 
-    def drop_item(self, kind, x: int, y: int) -> Item:
-        """Leave an item on a global tile (a corpse's belongings, a grave)."""
+    def drop_item(self, kind, x: int, y: int, rng=None) -> Item:
+        """Leave an item on a global tile (a corpse's belongings, a grave).
+
+        A dropped item rolls its affixes at the depth it fell, so loot found
+        far out is better loot — the same rule population obeys.
+        """
         contents = self.contents_at(x, y)
-        item = Item(kind=kind, x=x, y=y)
+        rarity, affixes = "common", ()
+        if rng is not None:
+            cx, cy = self.chunk_coords(x, y)
+            rarity, affixes = roll_for(
+                kind, rng, depth_fraction(cx, cy, self._config), self._config
+            )
+        item = Item(kind=kind, x=x, y=y, rarity=rarity, affixes=affixes)
         contents.items.append(item)
         contents.invalidate()
         return item

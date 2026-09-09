@@ -22,7 +22,8 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from config import Config
-from sim.items import ITEMS, ItemKind
+from sim.affixes import describe
+from sim.items import ITEMS, ItemKind, roll_for
 from sim.monsters import MAX_TIER, MonsterKind, table_for_tier
 from world.tiles import Tile
 
@@ -42,11 +43,34 @@ class Monster:
 
 @dataclass(frozen=True)
 class Item:
-    """A placed base item, awaiting the Phase 5 affix system."""
+    """A placed item: a base kind plus whatever the affix roll gave it."""
 
     kind: ItemKind
     x: int
     y: int
+    rarity: str = "common"
+    affixes: tuple = ()
+
+    @property
+    def attack(self) -> int:
+        """Base attack plus every stat/curse affix that touches attack."""
+        return self.kind.attack + sum(
+            int(a.amount) for a in self.affixes if a.field == "attack"
+        )
+
+    @property
+    def defense(self) -> int:
+        return self.kind.defense + sum(
+            int(a.amount) for a in self.affixes if a.field == "defense"
+        )
+
+    @property
+    def name(self) -> str:
+        return describe(self.kind.key, self.affixes)
+
+    @property
+    def cursed(self) -> bool:
+        return any(a.is_curse for a in self.affixes)
 
 
 @dataclass
@@ -178,7 +202,16 @@ def populate(
         )
     for x, y in take(round(config.item_density * len(spots))):
         kind = ITEMS[rng.randrange(len(ITEMS))]
-        contents.items.append(Item(kind=kind, x=origin_x + x, y=origin_y + y))
+        rarity, affixes = roll_for(kind, rng, fraction, config)
+        contents.items.append(
+            Item(
+                kind=kind,
+                x=origin_x + x,
+                y=origin_y + y,
+                rarity=rarity,
+                affixes=affixes,
+            )
+        )
     for x, y in take(round(config.trap_density * len(spots))):
         contents.traps.append(Trap(x=origin_x + x, y=origin_y + y))
     return contents

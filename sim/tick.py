@@ -170,7 +170,7 @@ def _kill(agent: AgentState, monster, world, rng: random.Random, config: Config)
     if rng.random() < config.monster_drop_chance:
         from sim.items import ITEMS
 
-        world.drop_item(ITEMS[rng.randrange(len(ITEMS))], *where)
+        world.drop_item(ITEMS[rng.randrange(len(ITEMS))], *where, rng=rng)
 
 
 def _resolve_death(agent: AgentState, world, config: Config) -> None:
