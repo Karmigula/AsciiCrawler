@@ -1,12 +1,14 @@
 """Fog of war: brightness tiers over state handed in (never world truth).
 
-visible -> full color; remembered (seen earlier, not currently visible) -> a
-scaled-down variant; never seen -> blank (None). `seen` maps tile -> tick of
-last sighting, which Phase 3 will use for decay; this phase only checks
-membership.
+visible -> full color; remembered (in memory, not currently visible) -> a
+scaled-down variant; never seen -> blank (None). `known` is the agent's
+memory (anything supporting `in`), so render and brain share one belief
+store. Visible tiles are observed into memory by the tick that precedes
+rendering, so the visible tier is always also remembered. Phase 3 will use
+last-seen ticks for decay.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Container, Mapping, Sequence
 
 Color = tuple[int, int, int]
 Position = tuple[int, int]
@@ -23,7 +25,7 @@ def fog_grid(
     rows: Sequence[str],
     palette: Mapping[str, Color],
     visible: set[Position],
-    seen: Mapping[Position, int],
+    known: Container[Position],
     remembered_factor: float,
 ) -> list[list[Cell | None]]:
     """Build the drawable grid: (glyph, color) per tile, None for never-seen."""
@@ -34,7 +36,7 @@ def fog_grid(
             base = palette[glyph]
             if (x, y) in visible:
                 cells.append((glyph, base))
-            elif (x, y) in seen:
+            elif (x, y) in known:
                 cells.append((glyph, shade(base, remembered_factor)))
             else:
                 cells.append(None)

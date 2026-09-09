@@ -34,6 +34,13 @@ class Config:
     agent_glyph: str = "@"
     fov_radius: int = 8
 
+    # agent brain: EXPLORE utility goal
+    w_explore: float = 1.0
+    explore_throttle_ticks: int = 5
+    frontier_sample_size: int = 50
+    explore_hysteresis_bonus: float = 0.1
+    explore_noise: float = 0.02
+
     # fog of war
     remembered_brightness: float = 0.6
 

@@ -1,7 +1,11 @@
-"""Wiring, fixed-timestep game loop, and controls (ESC to quit)."""
+"""Wiring, fixed-timestep game loop, and controls (ESC to quit).
+
+The loop only orchestrates: ticks advance agent + memory, then rendering
+recomputes FOV for the frame and shades it through the same memory the
+brain uses. No decisions are made here.
+"""
 
 import random
-from collections.abc import Sequence
 
 import pygame
 
@@ -9,20 +13,10 @@ from agent.fov import compute_fov
 from config import DEFAULT_CONFIG, Config
 from render.fog import fog_grid
 from render.screen import Screen
+from sim.harness import spawn_position
 from sim.tick import AgentState, tick
 from world.gen_bsp import generate
 from world.tiles import Tile
-
-
-def _spawn(tiles: Sequence[Sequence[Tile]], center_x: int, center_y: int) -> tuple[int, int]:
-    """Deterministic spawn: the FLOOR cell nearest the map center."""
-    floors = (
-        (x, y)
-        for y, row in enumerate(tiles)
-        for x, tile in enumerate(row)
-        if tile is Tile.FLOOR
-    )
-    return min(floors, key=lambda p: (p[0] - center_x) ** 2 + (p[1] - center_y) ** 2)
 
 
 def main(config: Config = DEFAULT_CONFIG) -> None:
@@ -36,10 +30,8 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
     rows = ["".join(tile.glyph for tile in row) for row in tiles]
     palette = {Tile.WALL.glyph: config.wall_color, Tile.FLOOR.glyph: config.floor_color}
     rng = random.Random(config.tick_seed)
-    spawn_x, spawn_y = _spawn(tiles, config.map_width // 2, config.map_height // 2)
+    spawn_x, spawn_y = spawn_position(tiles, config.map_width // 2, config.map_height // 2)
     agent = AgentState(x=spawn_x, y=spawn_y)
-    seen: dict[tuple[int, int], int] = {}
-    tick_count = 0
     screen = Screen(config)
     clock = pygame.time.Clock()
     tick_duration = 1.0 / config.tps
@@ -54,13 +46,10 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 running = False
         while accumulator >= tick_duration:
-            tick(agent, tiles, rng)
-            tick_count += 1
+            tick(agent, tiles, rng, config)
             accumulator -= tick_duration
         fov = compute_fov(tiles, (agent.x, agent.y), config.fov_radius)
-        for cell in fov:
-            seen[cell] = tick_count
-        cells = fog_grid(rows, palette, fov, seen, config.remembered_brightness)
+        cells = fog_grid(rows, palette, fov, agent.memory, config.remembered_brightness)
         camera = (agent.x, agent.y)
         screen.draw_cells(cells, camera)
         screen.draw_glyph(config.agent_glyph, agent.x, agent.y, camera, config.agent_color)

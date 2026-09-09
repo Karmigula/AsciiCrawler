@@ -18,6 +18,8 @@ INT_FIELDS = (
     "tps",
     "tick_seed",
     "fov_radius",
+    "explore_throttle_ticks",
+    "frontier_sample_size",
 )
 
 
@@ -44,6 +46,12 @@ def test_default_config_values():
     assert DEFAULT_CONFIG.remembered_brightness == 0.6
     assert 0.0 < DEFAULT_CONFIG.remembered_brightness < 1.0
     assert DEFAULT_CONFIG.bsp_min_room + 2 <= DEFAULT_CONFIG.bsp_min_partition
+    # agent brain tunables
+    assert DEFAULT_CONFIG.w_explore > 0.0
+    assert DEFAULT_CONFIG.explore_throttle_ticks >= 1
+    assert DEFAULT_CONFIG.frontier_sample_size >= 1
+    assert DEFAULT_CONFIG.explore_hysteresis_bonus >= 0.0
+    assert 0.0 <= DEFAULT_CONFIG.explore_noise < DEFAULT_CONFIG.explore_hysteresis_bonus
 
 
 def test_default_config_types():
@@ -51,6 +59,8 @@ def test_default_config_types():
         assert isinstance(getattr(DEFAULT_CONFIG, name), int), name
     assert isinstance(DEFAULT_CONFIG.max_frame_seconds, float)
     assert isinstance(DEFAULT_CONFIG.remembered_brightness, float)
+    for name in ("w_explore", "explore_hysteresis_bonus", "explore_noise"):
+        assert isinstance(getattr(DEFAULT_CONFIG, name), float), name
     assert isinstance(DEFAULT_CONFIG.font_path, str)
     assert isinstance(DEFAULT_CONFIG.window_title, str)
     for name in ("background_color", "wall_color", "floor_color", "agent_color"):
