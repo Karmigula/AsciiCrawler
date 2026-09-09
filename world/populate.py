@@ -1,0 +1,179 @@
+"""Per-chunk population: monsters, items and hidden traps, placed at generation.
+
+Everything here is decor this phase — nothing moves, fights or triggers until
+Phase 4. What matters now is that the placement is *deterministic* and that it
+*scales with depth*: a chunk populated from (world_seed, cx, cy) holds the same
+spawns forever, and the further that chunk sits from the world origin the more
+monsters it holds and the deeper the table they roll from.
+
+Distance is Euclidean from the world origin measured at the chunk-center tile
+— the same metric and sample point `chunks._band_for` uses for biome bands, so
+depth and biome move together instead of drifting apart.
+
+Respawn: the per-chunk cooldown is *data* here (`ChunkContents.respawn_tick`)
+and is not ticked. Deferring the timer to Phase 4 is deliberate — respawn only
+means something once monsters can die, and a timer that appends spawns nothing
+can remove would just inflate chunks during a Phase 3 soak. `respawn_cap` is
+carried alongside so Phase 4 has the ceiling ready.
+"""
+
+import math
+import random
+from dataclasses import dataclass, field
+
+import numpy as np
+
+from config import Config
+from sim.items import ITEMS, ItemKind
+from sim.monsters import MAX_TIER, MonsterKind, table_for_tier
+from world.tiles import Tile
+
+Position = tuple[int, int]
+
+
+@dataclass
+class Monster:
+    """A placed monster. Mutable: Phase 4 damages `hp` and moves it."""
+
+    kind: MonsterKind
+    x: int
+    y: int
+    hp: int
+
+
+@dataclass(frozen=True)
+class Item:
+    """A placed base item, awaiting the Phase 5 affix system."""
+
+    kind: ItemKind
+    x: int
+    y: int
+
+
+@dataclass(frozen=True)
+class Trap:
+    """A placed trap. Hidden until Phase 4 gives the agent detection."""
+
+    x: int
+    y: int
+    hidden: bool = True
+
+
+@dataclass
+class ChunkContents:
+    """Everything living (or lying) in one chunk, in global coordinates."""
+
+    monsters: list[Monster] = field(default_factory=list)
+    items: list[Item] = field(default_factory=list)
+    traps: list[Trap] = field(default_factory=list)
+    respawn_tick: int = 0  # Phase 4 reads this; nothing ticks it yet
+    respawn_cap: int = 0
+
+    # Position indexes over the lists above. They are rebuilt on demand rather
+    # than maintained: the tick queries them once per visible tile every tick,
+    # and a linear scan there costs (visible tiles x monsters) per tick, which
+    # is enough to dominate a soak run. Phase 4 moves and kills monsters, so it
+    # must call `invalidate()` (or go through helpers that do) after mutating
+    # `monsters`; a stale index is the obvious trap here and this is the note
+    # that says so.
+    _entity_index: dict[Position, Monster] | None = field(
+        default=None, repr=False, compare=False
+    )
+    _item_index: dict[Position, Item] | None = field(
+        default=None, repr=False, compare=False
+    )
+
+    def invalidate(self) -> None:
+        """Drop the position indexes; call after mutating monsters or items."""
+        self._entity_index = None
+        self._item_index = None
+
+    def entity_at(self, x: int, y: int) -> Monster | None:
+        if self._entity_index is None:
+            self._entity_index = {(m.x, m.y): m for m in self.monsters}
+        return self._entity_index.get((x, y))
+
+    def item_at(self, x: int, y: int) -> Item | None:
+        if self._item_index is None:
+            self._item_index = {(i.x, i.y): i for i in self.items}
+        return self._item_index.get((x, y))
+
+
+def chunk_distance(cx: int, cy: int, config: Config) -> float:
+    """Euclidean distance from the world origin to the chunk-center tile."""
+    size = config.chunk_size
+    gx = cx * size + size // 2
+    gy = cy * size + size // 2
+    return math.hypot(gx, gy)
+
+
+def depth_fraction(cx: int, cy: int, config: Config) -> float:
+    """0.0 at the origin, 1.0 at and beyond `tier_distance_max`."""
+    if config.tier_distance_max <= 0:
+        return 1.0
+    return min(1.0, chunk_distance(cx, cy, config) / config.tier_distance_max)
+
+
+def max_tier_for(cx: int, cy: int, config: Config) -> int:
+    """Deepest monster tier this chunk may roll — monotone in distance."""
+    return min(MAX_TIER, int(depth_fraction(cx, cy, config) * (MAX_TIER + 1)))
+
+
+def populate(
+    rng: random.Random, tiles: np.ndarray, cx: int, cy: int, config: Config
+) -> ChunkContents:
+    """Roll this chunk's contents from its own seeded rng. Never mutates tiles.
+
+    Spawns land only on FLOOR (liquids are impassable, so anything standing in
+    one would be unreachable for good) and never on the chunk-center tile,
+    which the pipeline carves as its connectivity anchor and chunk (0, 0) uses
+    as the agent's spawn.
+    """
+    size = config.chunk_size
+    center = (size // 2, size // 2)
+    floor = int(Tile.FLOOR)
+    cells = tiles.tolist()
+    spots = [
+        (x, y)
+        for y in range(tiles.shape[0])
+        for x in range(tiles.shape[1])
+        if cells[y][x] == floor and (x, y) != center
+    ]
+    contents = ChunkContents(respawn_cap=config.respawn_cap_per_chunk)
+    if not spots:
+        return contents
+
+    fraction = depth_fraction(cx, cy, config)
+    density = config.spawn_density_near + fraction * (
+        config.spawn_density_far - config.spawn_density_near
+    )
+    table = table_for_tier(max_tier_for(cx, cy, config))
+
+    rng.shuffle(spots)
+    taken = iter(spots)  # one shared pool: nothing shares a tile with anything
+
+    def take(count: int) -> list[Position]:
+        picked: list[Position] = []
+        for _ in range(count):
+            spot = next(taken, None)
+            if spot is None:
+                break
+            picked.append(spot)
+        return picked
+
+    # No cap on the initial roll: respawn_cap is Phase 4's ceiling on monsters
+    # trickling *back* into a cleared chunk, and clamping the first population
+    # with it would flatten the depth curve wherever the cap bites first.
+    monster_count = round(density * len(spots))
+    origin_x, origin_y = cx * size, cy * size
+    for x, y in take(monster_count):
+        kind = table[rng.randrange(len(table))]
+        contents.monsters.append(
+            Monster(kind=kind, x=origin_x + x, y=origin_y + y, hp=kind.hp)
+        )
+    for x, y in take(round(config.item_density * len(spots))):
+        kind = ITEMS[rng.randrange(len(ITEMS))]
+        contents.items.append(Item(kind=kind, x=origin_x + x, y=origin_y + y))
+    for x, y in take(round(config.trap_density * len(spots))):
+        contents.traps.append(Trap(x=origin_x + x, y=origin_y + y))
+    return contents

@@ -106,3 +106,20 @@ def test_default_config_types():
 
 def test_glyph_fits_in_cell():
     assert DEFAULT_CONFIG.font_size <= DEFAULT_CONFIG.cell_size
+
+
+def test_phase_3_population_and_decay_tunables_are_present_and_sane():
+    """Every Phase 3 knob lives in config, not scattered as literals."""
+    cfg = DEFAULT_CONFIG
+    assert 0 < cfg.spawn_density_near < cfg.spawn_density_far < 1
+    assert cfg.item_density > 0 and cfg.trap_density > 0
+    assert cfg.tier_distance_max > 0
+    assert cfg.activation_radius > 0
+    assert cfg.respawn_cooldown_ticks > 0 and cfg.respawn_cap_per_chunk > 0
+    assert cfg.memory_ttl > cfg.memory_prune_interval > 0
+    assert 0 < cfg.memory_stale_fraction < 1
+
+
+def test_the_fog_tiers_dim_in_order():
+    cfg = DEFAULT_CONFIG
+    assert 1.0 > cfg.remembered_brightness > cfg.stale_brightness > 0.0

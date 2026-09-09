@@ -141,3 +141,81 @@ def test_tick_refuses_to_step_into_liquid():
         tick(agent, world, random.Random(0), DEFAULT_CONFIG)
         assert (agent.x, agent.y) == (2, 2) or tiles[agent.y][agent.x] is Tile.FLOOR
         assert not (agent.x == 3 and agent.y == 2)  # never stands in the water
+
+
+class PopulatedWorld(FiniteWorld):
+    """Finite world that also answers the entity questions a chunk store does."""
+
+    def __init__(self, tiles, monsters=None) -> None:
+        super().__init__(tiles)
+        self.monsters = list(monsters or [])
+
+    def entity_at(self, x, y):
+        for monster in self.monsters:
+            if (monster.x, monster.y) == (x, y):
+                return monster
+        return None
+
+    def item_at(self, x, y):
+        return None
+
+    def active_entities(self, origin, radius):
+        return [
+            monster
+            for monster in self.monsters
+            if max(abs(monster.x - origin[0]), abs(monster.y - origin[1])) <= radius
+        ]
+
+
+def _monster(x, y, glyph="g"):
+    from sim.monsters import MONSTERS
+    from world.populate import Monster
+
+    kind = next(k for k in MONSTERS if k.glyph == glyph)
+    return Monster(kind=kind, x=x, y=y, hp=kind.hp)
+
+
+def test_only_entities_inside_the_activation_radius_are_active():
+    """Everything further out stays inert data — the Phase 4 AI seam."""
+    radius = DEFAULT_CONFIG.activation_radius
+    near = _monster(20 + radius - 1, 20)
+    edge = _monster(20 + radius, 20)
+    far = _monster(20 + radius + 1, 20)
+    world = PopulatedWorld(_open_field(), [near, edge, far])
+    agent = AgentState(x=20, y=20)
+    tick(agent, world, random.Random(1), DEFAULT_CONFIG)
+    active = set(id(m) for m in agent.active_entities)
+    assert id(near) in active
+    assert id(edge) in active  # the radius is inclusive
+    assert id(far) not in active
+
+
+def test_a_world_without_entities_still_ticks():
+    """The tick only asks for entities when the world offers them."""
+    agent = AgentState(x=20, y=20)
+    tick(agent, FiniteWorld(_open_field()), random.Random(1), DEFAULT_CONFIG)
+    assert agent.active_entities == []
+
+
+def test_the_agent_remembers_a_monster_it_walked_past():
+    world = PopulatedWorld(_open_field(), [_monster(21, 20, "o")])
+    agent = AgentState(x=20, y=20)
+    tick(agent, world, random.Random(1), DEFAULT_CONFIG)
+    assert agent.memory.snapshot((21, 20))[0] == "o"
+
+
+def test_the_pruner_fires_on_its_interval_and_bounds_memory():
+    from dataclasses import replace
+
+    config = replace(DEFAULT_CONFIG, memory_ttl=40, memory_prune_interval=20)
+    world = FiniteWorld(_open_field())
+    agent = AgentState(x=20, y=20)
+    rng = random.Random(3)
+    for _ in range(19):
+        tick(agent, world, rng, config)
+    assert agent.pruned_total == 0  # interval has not come round yet
+    seen_early = len(agent.memory)
+    for _ in range(181):
+        tick(agent, world, rng, config)
+    assert agent.pruned_total > 0
+    assert len(agent.memory) <= seen_early * 4  # bounded, not ever-growing

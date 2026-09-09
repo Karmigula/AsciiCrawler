@@ -33,3 +33,39 @@ def test_spawn_is_on_a_passable_tile():
     world = ChunkStore(DEFAULT_CONFIG, world_seed=DEFAULT_CONFIG.world_seed)
     x, y = world.spawn
     assert world.tile_at(x, y).passable
+
+
+def _decaying(ttl: int = 150, interval: int = 25):
+    """A fast-forgetting config, so a short run still exercises full decay."""
+    from dataclasses import replace
+
+    return replace(DEFAULT_CONFIG, memory_ttl=ttl, memory_prune_interval=interval)
+
+
+def test_decay_bounds_memory_over_a_long_run():
+    """The belief dict tracks recent experience, not lifetime experience.
+
+    Checked at the peak, not at the end: a final-tick reading could simply
+    have landed just after a sweep.
+    """
+    decayed = run_ticks(800, 11, _decaying())
+    forever = run_ticks(800, 11, _decaying(ttl=10**9, interval=25))
+    assert decayed.pruned_tiles > 0
+    assert decayed.memory_peak < forever.memory_peak / 2
+    assert forever.pruned_tiles == 0
+
+
+def test_the_agent_keeps_finding_somewhere_to_go():
+    """Decay recycles novelty: forgotten ground returns to the frontier."""
+    assert run_ticks(800, 11, _decaying()).frontier_starved_ticks == 0
+
+
+def test_a_decaying_run_is_still_deterministic():
+    config = _decaying()
+    assert run_ticks(400, 5, config) == run_ticks(400, 5, config)
+
+
+def test_the_active_scan_stays_bounded_by_the_activation_radius():
+    stats = run_ticks(400, 5, _decaying())
+    span = 2 * DEFAULT_CONFIG.activation_radius + 1
+    assert stats.monsters_seen <= span * span

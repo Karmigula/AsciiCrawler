@@ -65,6 +65,11 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
             agent.memory,
             config.remembered_brightness,
             origin=origin,
+            tick=agent.tick_count,
+            ttl=config.memory_ttl,
+            stale_factor=config.stale_brightness,
+            stale_fraction=config.memory_stale_fraction,
+            ghost_color=config.ghost_color,
         )
         screen.draw_cells(cells)
         screen.draw_glyph(config.agent_glyph, agent.x, agent.y, camera, config.agent_color)

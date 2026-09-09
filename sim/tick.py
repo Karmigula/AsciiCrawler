@@ -10,6 +10,12 @@ The brain never reads world tiles; only `_try_step` does, as physics: it is
 where a stale belief will someday produce a refused step instead of a walk
 through a wall.
 
+Two Phase 3 additions ride along. The pruner sweeps expired memory on its own
+interval, which is what keeps the belief dict bounded over a long run. And the
+active-entity scan collects the monsters inside `activation_radius` each tick:
+they are frozen decor until Phase 4, but the scan is the seam the AI hangs off,
+and its cost is bounded by the radius rather than by the size of the world.
+
 Agent position is unbounded global coordinates; nothing here knows about
 chunk boundaries.
 """
@@ -33,6 +39,8 @@ class AgentState:
     memory: Memory = field(default_factory=Memory)
     explorer: ExploreGoal = field(default_factory=ExploreGoal)
     tick_count: int = 0
+    active_entities: list = field(default_factory=list)
+    pruned_total: int = 0
 
 
 def tick(agent: AgentState, world, rng: random.Random, config: Config) -> None:
@@ -42,6 +50,8 @@ def tick(agent: AgentState, world, rng: random.Random, config: Config) -> None:
     world.ensure_loaded((agent.x, agent.y))
     _act(agent, world, rng)
     _observe(agent, world, config)
+    _forget(agent, config)
+    _scan_active(agent, world, config)
     _think(agent, rng, config)
 
 
@@ -99,7 +109,47 @@ def _observe(agent: AgentState, world, config: Config) -> None:
     observation = {
         (origin_x + lx, origin_y + ly): window[ly][lx] for lx, ly in visible
     }
-    agent.memory.observe(observation, agent.tick_count)
+    entities, items = _things_seen(world, observation)
+    agent.memory.observe(observation, agent.tick_count, entities, items)
+
+
+def _things_seen(world, observation) -> tuple[dict, dict]:
+    """Glyphs of whatever stands on the visible tiles, for memory snapshots.
+
+    Worlds that carry no entities (the tiny stubs the tick tests use) simply
+    do not offer these lookups, and the agent then remembers terrain alone.
+    """
+    entity_at = getattr(world, "entity_at", None)
+    item_at = getattr(world, "item_at", None)
+    entities: dict = {}
+    items: dict = {}
+    if entity_at is None and item_at is None:
+        return entities, items
+    for coord in observation:
+        if entity_at is not None:
+            monster = entity_at(*coord)
+            if monster is not None:
+                entities[coord] = monster.kind.glyph
+        if item_at is not None:
+            item = item_at(*coord)
+            if item is not None:
+                items[coord] = item.kind.glyph
+    return entities, items
+
+
+def _forget(agent: AgentState, config: Config) -> None:
+    """Sweep expired memory on the pruner interval (cheap, not every tick)."""
+    if agent.tick_count % config.memory_prune_interval:
+        return
+    agent.pruned_total += agent.memory.prune(agent.tick_count, config.memory_ttl)
+
+
+def _scan_active(agent: AgentState, world, config: Config) -> None:
+    """Collect the entities near enough to matter. Frozen until Phase 4."""
+    scan = getattr(world, "active_entities", None)
+    if scan is None:
+        return
+    agent.active_entities = scan((agent.x, agent.y), config.activation_radius)
 
 
 def _think(agent: AgentState, rng: random.Random, config: Config) -> None:

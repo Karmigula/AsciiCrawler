@@ -3,8 +3,19 @@
 Records exist only for tiles the FOV has delivered; the dict is keyed by
 (x, y) and never consulted for tiles outside it. Terrain beliefs are written
 by `observe` from FOV output — memory itself never touches the world grid.
-Entity/item snapshot fields join the record in later phases; callers read
-records by attribute so the dataclass can grow without breaking them.
+
+Memory is mortal. A record older than `ttl` ticks is expired: `prune` drops
+it and the tile becomes unknown again, exactly as if it had never been seen.
+That is what keeps the dict bounded by recent experience rather than lifetime
+experience, and what keeps the world interesting — forgotten ground reappears
+as frontier, so the agent re-explores it forever instead of running out of
+novelty. Because expiry is measured in ticks since last sighting, the tick
+loop must observe every tick: the timestamps are load-bearing.
+
+Records also carry what was last *seen on* a tile (entity glyph, item glyph)
+so the renderer can ghost remembered monsters and loot at their last known
+position. A sighting that finds the tile empty clears those snapshots — the
+agent believes what it last saw, including seeing something gone.
 """
 
 from collections.abc import Iterable, Mapping
@@ -17,10 +28,12 @@ Position = tuple[int, int]
 
 @dataclass
 class MemoryRecord:
-    """One tile's belief: what terrain it is and when it was last seen."""
+    """One tile's belief: terrain, when last seen, and what stood on it."""
 
     terrain_belief: Tile
     last_seen_tick: int
+    last_entity_snapshot: str | None = None
+    last_item: str | None = None
 
 
 class Memory:
@@ -30,23 +43,68 @@ class Memory:
         self._records: dict[Position, MemoryRecord] = {}
         self.generation: int = 0  # bumps once per observe that adds new tiles
 
-    def observe(self, observation: Mapping[Position, Tile], tick: int) -> int:
+    def observe(
+        self,
+        observation: Mapping[Position, Tile],
+        tick: int,
+        entities: Mapping[Position, str] | None = None,
+        items: Mapping[Position, str] | None = None,
+    ) -> int:
         """Merge one FOV observation (visible coord -> terrain) into memory.
 
-        Returns how many tiles were previously unknown. Re-sightings only
-        refresh `last_seen_tick`.
+        Returns how many tiles were previously unknown. A re-sighting refreshes
+        `last_seen_tick`, re-writes the terrain belief (static today, but the
+        record is the belief of record) and overwrites both snapshots from what
+        is visible now — including overwriting them with None when the tile is
+        seen to be empty.
         """
+        entities = entities or {}
+        items = items or {}
         fresh = 0
         for coord, terrain in observation.items():
             record = self._records.get(coord)
             if record is None:
-                self._records[coord] = MemoryRecord(terrain_belief=terrain, last_seen_tick=tick)
+                self._records[coord] = MemoryRecord(
+                    terrain_belief=terrain,
+                    last_seen_tick=tick,
+                    last_entity_snapshot=entities.get(coord),
+                    last_item=items.get(coord),
+                )
                 fresh += 1
             else:
                 record.last_seen_tick = tick
+                record.terrain_belief = terrain
+                record.last_entity_snapshot = entities.get(coord)
+                record.last_item = items.get(coord)
         if fresh:
             self.generation += 1
         return fresh
+
+    def prune(self, tick: int, ttl: int) -> int:
+        """Drop every record older than `ttl` ticks. Returns how many went.
+
+        Bumps `generation` when anything is dropped: forgetting changes the
+        frontier just as much as discovering does, and a brain that caches its
+        plan against the generation counter must re-look at a world it has
+        started to forget.
+        """
+        expired = [
+            coord
+            for coord, record in self._records.items()
+            if tick - record.last_seen_tick > ttl
+        ]
+        for coord in expired:
+            del self._records[coord]
+        if expired:
+            self.generation += 1
+        return len(expired)
+
+    def snapshot(self, coord: Position) -> tuple[str | None, str | None]:
+        """(entity glyph, item glyph) last seen on coord; (None, None) if unseen."""
+        record = self._records.get(coord)
+        if record is None:
+            return None, None
+        return record.last_entity_snapshot, record.last_item
 
     def believes_passable(self, coord: Position) -> bool:
         """True only for tiles already seen AND believed to be floor."""

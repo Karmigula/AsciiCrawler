@@ -42,12 +42,13 @@ platforms — Python's builtin hash() is salted and would break determinism).
 
 import math
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
 from config import Config, DEFAULT_CONFIG
 from world import gen_bsp, gen_cave, gen_cavern
+from world.populate import ChunkContents, Monster, populate
 from world.tiles import Tile
 
 ChunkKey = tuple[int, int]
@@ -55,6 +56,8 @@ Position = tuple[int, int]
 
 _MASK64 = (1 << 64) - 1
 _NOISE_SALT = 0xC0FFEE  # keeps distance-noise hashes distinct from other uses
+_POPULATE_SALT = 0x5EED11FE  # populate rolls from a stream of their own, so
+# adding or retuning spawns can never shift a single tile of generated terrain
 
 
 def _mix64(z: int) -> int:
@@ -75,11 +78,12 @@ def _hash_ints(*values: int) -> int:
 
 @dataclass
 class Chunk:
-    """One generated chunk: origin coords plus its int8 tile array."""
+    """One generated chunk: origin coords, its int8 tile array, its contents."""
 
     cx: int
     cy: int
     tiles: np.ndarray
+    contents: ChunkContents = field(default_factory=ChunkContents)
 
 
 class ChunkStore:
@@ -104,7 +108,15 @@ class ChunkStore:
         key = (cx, cy)
         chunk = self._chunks.get(key)
         if chunk is None:
-            chunk = Chunk(cx, cy, _generate_chunk(self.seed, cx, cy, self._config))
+            tiles = _generate_chunk(self.seed, cx, cy, self._config)
+            contents = populate(
+                random.Random(_hash_ints(self.seed, cx, cy, _POPULATE_SALT) % (1 << 63)),
+                tiles,
+                cx,
+                cy,
+                self._config,
+            )
+            chunk = Chunk(cx, cy, tiles, contents)
             self._chunks[key] = chunk
         return chunk
 
@@ -122,6 +134,44 @@ class ChunkStore:
         for dy in range(-radius, radius + 1):
             for dx in range(-radius, radius + 1):
                 self.get_chunk(cx + dx, cy + dy)
+
+    def contents_at(self, x: int, y: int) -> ChunkContents:
+        """The contents of the chunk containing global tile (x, y)."""
+        size = self._config.chunk_size
+        return self.get_chunk(x // size, y // size).contents
+
+    def entity_at(self, x: int, y: int) -> Monster | None:
+        """The monster standing on a global tile, if any."""
+        return self.contents_at(x, y).entity_at(x, y)
+
+    def item_at(self, x: int, y: int):
+        """The item lying on a global tile, if any."""
+        return self.contents_at(x, y).item_at(x, y)
+
+    def active_entities(self, origin: Position, radius: int) -> list[Monster]:
+        """Monsters inside the activation radius (Chebyshev, the agent's metric).
+
+        The scan is bounded by the chunks the radius can reach, so cost tracks
+        the radius and not the size of the world: everything further out stays
+        inert data in RAM. Entities are frozen this phase — Phase 4 hangs AI
+        off exactly this list.
+        """
+        size = self._config.chunk_size
+        ox, oy = origin
+        span = radius // size + 1
+        cx, cy = self.chunk_coords(ox, oy)
+        active: list[Monster] = []
+        for dy in range(-span, span + 1):
+            for dx in range(-span, span + 1):
+                chunk = self._chunks.get((cx + dx, cy + dy))
+                if chunk is None:
+                    continue  # never generate just to look for entities
+                active.extend(
+                    monster
+                    for monster in chunk.contents.monsters
+                    if max(abs(monster.x - ox), abs(monster.y - oy)) <= radius
+                )
+        return active
 
     @property
     def spawn(self) -> Position:

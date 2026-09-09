@@ -62,8 +62,25 @@ class Config:
     explore_hysteresis_bonus: float = 0.1
     explore_noise: float = 0.02
 
+    # population (Phase 3 places data only; AI, combat and traps fire in Phase 4)
+    spawn_density_near: float = 0.002  # monsters per floor tile at the origin
+    spawn_density_far: float = 0.008  # ...once tier_distance_max is reached
+    item_density: float = 0.003  # items per floor tile (flat; loot is Phase 5)
+    trap_density: float = 0.0015  # hidden traps per floor tile
+    tier_distance_max: int = 900  # distance at which the deepest table unlocks
+    activation_radius: int = 40  # tiles; entities outside are inert data
+    respawn_cooldown_ticks: int = 1500  # per chunk, once the agent is far
+    respawn_cap_per_chunk: int = 24  # Phase 4 respawn ceiling, not a spawn cap
+
+    # memory decay: knowledge expires, so the world goes unknown again
+    memory_ttl: int = 3000  # ticks before a tile is forgotten outright
+    memory_prune_interval: int = 250  # ticks between pruner sweeps
+    memory_stale_fraction: float = 0.5  # age > ttl * this -> the stale tier
+
     # fog of war
-    remembered_brightness: float = 0.6
+    remembered_brightness: float = 0.6  # fresh memory
+    stale_brightness: float = 0.35  # older than memory_stale_fraction of TTL
+    ghost_color: tuple[int, int, int] = (150, 150, 160)  # remembered entities
 
 
 DEFAULT_CONFIG = Config()
