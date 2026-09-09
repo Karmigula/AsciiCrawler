@@ -5,6 +5,9 @@ EXPLORE scores frontier candidates with
 where info_gain counts the never-seen tiles adjacent to the candidate and
 path_cost is the shortest-path cost over believed floors (one Dijkstra
 sweep whose values equal each candidate's A* path length — see pathing).
+The sweep is bounded by the sampled candidates: it stops once they have all
+been settled, which costs a fraction of a full sweep over everything the
+agent remembers and returns the identical costs for the coords being scored.
 Hysteresis keeps the incumbent target from being dithered away by a
 near-tied challenger, and small seeded noise breaks exact ties between
 identical candidates.
@@ -74,7 +77,7 @@ class ExploreGoal:
             sx, sy = start
             candidates.sort(key=lambda p: (max(abs(p[0] - sx), abs(p[1] - sy)), p))
             del candidates[config.frontier_sample_size:]
-            cost, came_from = distances(memory, start)
+            cost, came_from = distances(memory, start, targets=candidates)
             best: Position | None = None
             best_score = float("-inf")
             for cand in candidates:

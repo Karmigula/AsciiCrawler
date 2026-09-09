@@ -11,7 +11,7 @@ Tie-breaking is deterministic: fixed neighbour order plus FIFO insertion.
 """
 
 import heapq
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 
 from agent.memory import Memory, Position
 
@@ -85,25 +85,43 @@ def astar(memory: Memory, start: Position, goal: Position) -> list[Position] | N
 def distances(
     memory: Memory,
     start: Position,
+    targets: Iterable[Position] | None = None,
 ) -> tuple[Mapping[Position, float], dict[Position, Position]]:
     """Dijkstra from start over believed floors: (cost-so-far, came-from).
 
     Absent coords are unreachable in belief. Costs and corner rules match
     `astar`, so each cost equals that coord's A* path length — one sweep
     scores every frontier candidate instead of one search per candidate.
+
+    `targets` bounds the work without changing a single answer. Dijkstra
+    settles nodes in nondecreasing cost order, so a node's cost and parent
+    are final the moment it closes: once every target has closed there is
+    nothing left to learn about them, and the sweep stops. Costs returned
+    for those targets are identical to the unbounded sweep's — the caller
+    only loses entries for coords it never asked about. Targets that are
+    unreachable in belief never close, so the sweep then ends the way it
+    always did, by exhausting the reachable component.
+
+    `None` means sweep everything. A collection means stop once satisfied,
+    and the empty collection is satisfied immediately.
     """
     if not memory.believes_passable(start):
         return {}, {}
+    remaining = None if targets is None else set(targets)
     open_heap: list[tuple[float, int, Position]] = [(0.0, 0, start)]
     cost: dict[Position, float] = {start: 0.0}
     came_from: dict[Position, Position] = {}
     closed: set[Position] = set()
     counter = 0
     while open_heap:
+        if remaining is not None and not remaining:
+            break
         g, _, pos = heapq.heappop(open_heap)
         if pos in closed:
             continue
         closed.add(pos)
+        if remaining is not None:
+            remaining.discard(pos)
         for nxt, step in _neighbors(memory, pos):
             tentative = g + step
             if nxt in closed or (nxt in cost and cost[nxt] <= tentative):

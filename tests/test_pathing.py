@@ -1,5 +1,7 @@
+import pytest
+
 from agent.memory import Memory
-from agent.pathing import astar
+from agent.pathing import astar, distances, rebuild_path
 from world.tiles import Tile
 
 
@@ -95,3 +97,83 @@ def test_astar_returns_none_for_unknown_endpoints():
 def test_astar_is_deterministic():
     memory = _open_grid(12, 9)
     assert astar(memory, (1, 1), (10, 7)) == astar(memory, (1, 1), (10, 7))
+
+
+def _blob_memory(width: int = 40, height: int = 30, walls=()) -> Memory:
+    """An open believed-floor rectangle, minus any walls named by the caller."""
+    memory = Memory()
+    memory.observe(
+        {
+            (x, y): (Tile.WALL if (x, y) in set(walls) else Tile.FLOOR)
+            for y in range(height)
+            for x in range(width)
+        },
+        tick=0,
+    )
+    return memory
+
+
+def test_targeted_distances_match_the_full_sweep_exactly():
+    """Early termination is an optimisation, not a behaviour change.
+
+    Dijkstra settles nodes in nondecreasing cost order, so a node's cost is
+    final the moment it closes; stopping once every target has closed must
+    give byte-identical costs for those targets.
+    """
+    walls = [(10, y) for y in range(0, 25)] + [(25, y) for y in range(5, 30)]
+    memory = _blob_memory(walls=walls)
+    start = (2, 2)
+    targets = [(5, 5), (12, 20), (30, 28), (39, 0), (8, 15)]
+    full_cost, full_from = distances(memory, start)
+    part_cost, part_from = distances(memory, start, targets=targets)
+    for target in targets:
+        assert part_cost.get(target) == full_cost.get(target)
+        assert rebuild_path(part_from, target, start) == rebuild_path(
+            full_from, target, start
+        )
+
+
+def test_targeted_distances_agree_with_astar_path_length():
+    """The claim goals.py relies on: a sweep cost IS that coord's A* length."""
+    walls = [(10, y) for y in range(0, 25)]
+    memory = _blob_memory(walls=walls)
+    start = (2, 2)
+    for target in ((5, 5), (12, 20), (30, 28), (20, 3)):
+        path = astar(memory, start, target)
+        cost, _ = distances(memory, start, targets=[target])
+        assert path is not None
+        expected = 0.0
+        cursor = start
+        for step in path:
+            diagonal = step[0] != cursor[0] and step[1] != cursor[1]
+            expected += 2.0**0.5 if diagonal else 1.0
+            cursor = step
+        assert cost[target] == pytest.approx(expected)
+
+
+def test_targeting_an_unreachable_coord_still_terminates():
+    """A sealed-off target cannot settle, so the sweep must end by exhaustion."""
+    walls = [(10, y) for y in range(30)]
+    memory = _blob_memory(walls=walls)
+    cost, _ = distances(memory, (2, 2), targets=[(20, 20), (5, 5)])
+    assert cost.get((20, 20)) is None  # walled off
+    assert cost.get((5, 5)) is not None
+
+
+def test_a_targeted_sweep_settles_fewer_nodes_than_the_full_one():
+    """The point of the exercise: less work, same answers."""
+    memory = _blob_memory()
+    full_cost, _ = distances(memory, (2, 2))
+    part_cost, _ = distances(memory, (2, 2), targets=[(4, 4)])
+    assert len(part_cost) < len(full_cost)
+    assert part_cost[(4, 4)] == full_cost[(4, 4)]
+
+
+def test_the_two_target_modes_are_distinct():
+    """None means sweep everything; a collection means stop once it is
+    satisfied — and the empty collection is satisfied immediately."""
+    memory = _blob_memory()
+    full_cost, _ = distances(memory, (2, 2))
+    empty_cost, _ = distances(memory, (2, 2), targets=[])
+    assert len(full_cost) > 100
+    assert list(empty_cost) == [(2, 2)]  # start only: nothing to wait for
