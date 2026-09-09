@@ -54,7 +54,18 @@ class AgentState:
     pickups: int = 0
     goal_name: str = "EXPLORE"
     derived: object = None
+    _mind: object = None
     _loadout_signature: tuple = ()
+
+    def mind(self, config: Config) -> Config:
+        """The config the brain is actually running on.
+
+        Cognition affixes are folded in here, so the renderer showing a sight
+        radius or a memory age is showing the one the agent is really using
+        rather than the one written in the config file. Falls back to the base
+        config before the first tick has built the loadout.
+        """
+        return self._mind if self._mind is not None else config
     tick_count: int = 0
     active_entities: list = field(default_factory=list)
     pruned_total: int = 0

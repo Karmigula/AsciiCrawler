@@ -1,30 +1,59 @@
-"""Wiring, fixed-timestep game loop, and controls (ESC to quit).
+"""Wiring, fixed-timestep game loop, and the watcher's controls.
 
-The loop only orchestrates: ticks advance the agent through the infinite
-chunk world, then rendering hands the screen a world-window of glyph rows
-around the camera (built through `tile_at`), shades it through the same
-memory the brain uses, and draws the agent on top. No decisions are made
-here; the camera simply follows the agent across chunk borders.
+The loop only orchestrates: ticks advance the agent through the infinite chunk
+world, then rendering hands the screen a world-window of glyph rows around the
+camera (built through `tile_at`), shades it through the same memory the brain
+uses, optionally recolours it through a debug overlay, and draws the agent and
+the HUD on top. No decisions are made here.
+
+Controls
+    esc        quit
+    space      pause
+    1 2 3      speed 1x / 4x / 16x
+    F1..F5     overlays: fov, memory age, threat, plan, frontier
+    h          toggle the HUD
+    n          new world (fresh seed, fresh creature)
+    p          screenshot
+
+Speed multiplies ticks per frame rather than shortening the frame, so 16x is
+the same simulation run faster and not a different one.
 """
 
 import random
+from datetime import datetime
+from pathlib import Path
 
 import pygame
 
 from agent.fov import compute_fov
 from config import DEFAULT_CONFIG, Config
 from render.fog import fog_grid
+from render.hud import equipment_lines, help_lines, hud_lines
+from render.overlays import OVERLAY_NAMES, apply_overlay
 from render.screen import Screen
 from sim.tick import AgentState, tick
 from world.chunks import ChunkStore
 from world.tiles import Tile
 
+_OVERLAY_KEYS = {
+    pygame.K_F1: OVERLAY_NAMES[0],
+    pygame.K_F2: OVERLAY_NAMES[1],
+    pygame.K_F3: OVERLAY_NAMES[2],
+    pygame.K_F4: OVERLAY_NAMES[3],
+    pygame.K_F5: OVERLAY_NAMES[4],
+}
+
+
+def _new_world(config: Config, seed: int):
+    """A fresh world and a fresh creature to live in it."""
+    world = ChunkStore(config, world_seed=seed)
+    spawn = world.spawn
+    return world, AgentState(x=spawn[0], y=spawn[1]), random.Random(seed + 1)
+
 
 def main(config: Config = DEFAULT_CONFIG) -> None:
-    world = ChunkStore(config, world_seed=config.world_seed)
-    spawn = world.spawn
-    rng = random.Random(config.tick_seed)
-    agent = AgentState(x=spawn[0], y=spawn[1])
+    seed = config.world_seed
+    world, agent, rng = _new_world(config, seed)
     palette = {
         Tile.WALL.glyph: config.wall_color,
         Tile.FLOOR.glyph: config.floor_color,
@@ -35,29 +64,58 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
     clock = pygame.time.Clock()
     tick_duration = 1.0 / config.tps
     accumulator = 0.0
+    speed_index = 0
+    paused = False
+    overlay = None
+    show_hud = True
     running = True
+
     while running:
         dt = clock.tick(config.max_fps) / 1000.0
         accumulator = min(accumulator + dt, config.max_frame_seconds)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    running = False
+                elif event.key == pygame.K_SPACE:
+                    paused = not paused
+                elif event.key in (pygame.K_1, pygame.K_2, pygame.K_3):
+                    speed_index = min(
+                        (pygame.K_1, pygame.K_2, pygame.K_3).index(event.key),
+                        len(config.speed_steps) - 1,
+                    )
+                elif event.key in _OVERLAY_KEYS:
+                    chosen = _OVERLAY_KEYS[event.key]
+                    overlay = None if overlay == chosen else chosen
+                elif event.key == pygame.K_h:
+                    show_hud = not show_hud
+                elif event.key == pygame.K_n:
+                    seed += 1
+                    world, agent, rng = _new_world(config, seed)
+                    accumulator = 0.0
+                elif event.key == pygame.K_p:
+                    _save_screenshot(screen, config, seed, agent)
+
+        speed = config.speed_steps[speed_index]
         while accumulator >= tick_duration:
-            tick(agent, world, rng, config)
+            if not paused:
+                for _ in range(speed):
+                    tick(agent, world, rng, config)
             accumulator -= tick_duration
+
         camera = (agent.x, agent.y)
         origin = screen.camera_origin(camera)
         cols, rows = screen.view_dims
         rows_text = [
             "".join(
-                world.tile_at(origin[0] + x, origin[1] + y).glyph
-                for x in range(cols)
+                world.tile_at(origin[0] + x, origin[1] + y).glyph for x in range(cols)
             )
             for y in range(rows)
         ]
         visible = _fov_global(world, agent, config)
+        mind = agent.mind(config)
         cells = fog_grid(
             rows_text,
             palette,
@@ -66,20 +124,38 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
             config.remembered_brightness,
             origin=origin,
             tick=agent.tick_count,
-            ttl=config.memory_ttl,
+            ttl=mind.memory_ttl,
             stale_factor=config.stale_brightness,
             stale_fraction=config.memory_stale_fraction,
             ghost_color=config.ghost_color,
         )
+        if overlay is not None:
+            cells = apply_overlay(cells, overlay, origin, agent, visible, mind)
         screen.draw_cells(cells)
-        screen.draw_glyph(config.agent_glyph, agent.x, agent.y, camera, config.agent_color)
+        screen.draw_glyph(
+            config.agent_glyph, agent.x, agent.y, camera, config.agent_color
+        )
+        if show_hud:
+            screen.draw_panel(hud_lines(agent, len(world), config, speed, paused))
+            screen.draw_panel(
+                equipment_lines(agent, config) + [("", config.hud_color)] + help_lines(config),
+                right=True,
+                top=False,
+            )
         screen.present()
     screen.close()
 
 
+def _save_screenshot(screen: Screen, config: Config, seed: int, agent: AgentState) -> None:
+    folder = Path(config.screenshot_dir)
+    folder.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    screen.screenshot(folder / f"crawler-{seed}-{agent.tick_count}-{stamp}.png")
+
+
 def _fov_global(world: ChunkStore, agent: AgentState, config: Config) -> set[tuple[int, int]]:
     """Visible set in global coordinates (window semantics match the tick)."""
-    radius = config.fov_radius
+    radius = agent.mind(config).fov_radius
     origin_x, origin_y = agent.x - radius, agent.y - radius
     window = [
         [world.tile_at(origin_x + lx, origin_y + ly) for lx in range(2 * radius + 1)]

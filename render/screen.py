@@ -27,6 +27,7 @@ class Screen:
         self._window = pygame.display.set_mode((config.window_width, config.window_height))
         pygame.display.set_caption(config.window_title)
         self._font = self._load_font()
+        self._hud_font = self._load_font(config.font_size - 2)
         self._glyph_cache: dict[tuple[str, Color], pygame.Surface] = {}
         self._cols = config.window_width // config.cell_size
         self._rows = config.window_height // config.cell_size
@@ -72,6 +73,33 @@ class Screen:
         origin_x, origin_y = self._origin(camera_center)
         self._blit_glyph(glyph, cell_x - origin_x, cell_y - origin_y, color)
 
+    def draw_panel(self, lines, right: bool = True, top: bool = True) -> None:
+        """Draw HUD lines in a corner over a dimmed backing.
+
+        The backing is drawn rather than reserved: the world grid keeps the
+        whole window, so the view does not jump when the HUD is toggled.
+        """
+        if not lines:
+            return
+        config = self._config
+        height = len(lines) * config.hud_line_height + 12
+        width = config.hud_panel_width
+        x = config.window_width - width if right else 0
+        y = 0 if top else config.window_height - height
+        backing = pygame.Surface((width, height))
+        backing.set_alpha(205)
+        backing.fill(config.background_color)
+        self._window.blit(backing, (x, y))
+        for index, (text, color) in enumerate(lines):
+            if not text:
+                continue
+            surface = self._hud_font.render(text, True, color)
+            self._window.blit(surface, (x + 8, y + 6 + index * config.hud_line_height))
+
+    def screenshot(self, path) -> None:
+        """Save the current frame to a png."""
+        pygame.image.save(self._window, str(path))
+
     def present(self) -> None:
         pygame.display.flip()
 
@@ -96,8 +124,9 @@ class Screen:
             self._glyph_cache[key] = self._font.render(glyph, True, color)
         return self._glyph_cache[key]
 
-    def _load_font(self) -> pygame.font.Font:
+    def _load_font(self, size: int | None = None) -> pygame.font.Font:
+        size = self._config.font_size if size is None else size
         path = _REPO_ROOT / self._config.font_path
         if path.is_file():
-            return pygame.font.Font(str(path), self._config.font_size)
-        return pygame.font.Font(None, self._config.font_size)
+            return pygame.font.Font(str(path), size)
+        return pygame.font.Font(None, size)

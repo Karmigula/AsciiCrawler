@@ -46,6 +46,22 @@ class Config:
     water_color: tuple[int, int, int] = (60, 120, 200)
     lava_color: tuple[int, int, int] = (220, 80, 40)
 
+    # HUD and overlays
+    hud_color: tuple[int, int, int] = (200, 200, 210)
+    hud_dim_color: tuple[int, int, int] = (110, 110, 125)
+    hud_accent_color: tuple[int, int, int] = (215, 180, 100)
+    hud_good_color: tuple[int, int, int] = (120, 200, 130)
+    hud_warn_color: tuple[int, int, int] = (220, 190, 90)
+    hud_bad_color: tuple[int, int, int] = (220, 90, 90)
+    hud_panel_width: int = 300
+    hud_line_height: int = 18
+    overlay_hot_color: tuple[int, int, int] = (250, 240, 140)
+    overlay_cold_color: tuple[int, int, int] = (70, 90, 140)
+    overlay_danger_color: tuple[int, int, int] = (240, 80, 80)
+    overlay_plan_color: tuple[int, int, int] = (120, 220, 220)
+    speed_steps: tuple[int, ...] = (1, 4, 16)
+    screenshot_dir: str = "screenshots"
+
     # simulation
     tps: int = 10
     tick_seed: int = 1337
