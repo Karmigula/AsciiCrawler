@@ -5,7 +5,7 @@ state handed to it (cells of glyph+color pairs or None for blank, positions)
 and never imports world/sim/agent modules.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 
 import pygame
