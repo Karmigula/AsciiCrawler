@@ -181,13 +181,22 @@ class ChunkStore:
         contents.monsters.remove(monster)
         contents.invalidate()
 
-    def drop_item(self, kind, x: int, y: int, rng=None) -> Item:
+    def drop_item(self, kind, x: int, y: int, rng=None, item=None) -> Item:
         """Leave an item on a global tile (a corpse's belongings, a grave).
 
         A dropped item rolls its affixes at the depth it fell, so loot found
         far out is better loot — the same rule population obeys.
         """
         contents = self.contents_at(x, y)
+        if item is not None:
+            # Placing something that already exists (gear falling from a
+            # corpse): keep its identity rather than rolling a new one.
+            placed = Item(
+                kind=item.kind, x=x, y=y, rarity=item.rarity, affixes=item.affixes
+            )
+            contents.items.append(placed)
+            contents.invalidate()
+            return placed
         rarity, affixes = "common", ()
         if rng is not None:
             cx, cy = self.chunk_coords(x, y)

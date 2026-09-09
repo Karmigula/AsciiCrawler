@@ -167,7 +167,7 @@ class PopulatedWorld(FiniteWorld):
     def remove_entity(self, monster):
         self.monsters.remove(monster)
 
-    def drop_item(self, kind, x, y, rng=None):
+    def drop_item(self, kind, x, y, rng=None, item=None):
         self.dropped.append((kind.key, x, y))
 
     def take_item(self, x, y):
@@ -561,3 +561,101 @@ def test_the_agent_eventually_reaches_loot_it_set_out_for():
         if agent.equipped.get("weapon") is not None:
             break
     assert agent.equipped.get("weapon") is not None
+
+
+class LavaWorld(FiniteWorld):
+    """Open floor with a lava pool, for the two lava behaviours."""
+
+    def __init__(self, tiles, lava=()) -> None:
+        super().__init__(tiles)
+        self.lava = set(lava)
+
+    def tile_at(self, x, y):
+        if (x, y) in self.lava:
+            return Tile.LAVA
+        return super().tile_at(x, y)
+
+
+def test_standing_next_to_lava_burns():
+    """The deep biome should cost something to walk through."""
+    world = LavaWorld(_open_field(), lava={(21, 20)})
+    agent = AgentState(x=20, y=20)
+    tick(agent, world, random.Random(1), DEFAULT_CONFIG)
+    assert agent.heat_damage == DEFAULT_CONFIG.lava_heat_damage
+    assert agent.stats.hp == agent.stats.max_hp - DEFAULT_CONFIG.lava_heat_damage
+
+
+def test_lava_further_off_does_not_burn():
+    world = LavaWorld(_open_field(), lava={(25, 20)})
+    agent = AgentState(x=20, y=20)
+    tick(agent, world, random.Random(1), DEFAULT_CONFIG)
+    assert agent.heat_damage == 0
+
+
+def test_lava_lights_ground_the_agent_cannot_see_past():
+    """A wall of unknown with a red dot in it is not a place; the glow makes
+    the far biome read as somewhere rather than as a texture."""
+    field = _open_field()
+    for y in range(10, 40):
+        field[y][24] = Tile.WALL  # a wall the agent cannot see past
+    world = LavaWorld(field, lava={(26, 20)})
+    agent = AgentState(x=20, y=20)
+    tick(agent, world, random.Random(1), DEFAULT_CONFIG)
+    assert (26, 20) in agent.memory  # the pool itself
+    assert (27, 20) in agent.memory  # and what it lights, behind the wall
+
+
+def test_lava_glow_can_be_switched_off():
+    from dataclasses import replace
+
+    config = replace(DEFAULT_CONFIG, lava_glow_radius=0, lava_heat_damage=0)
+    field = _open_field()
+    for y in range(10, 40):
+        field[y][24] = Tile.WALL
+    world = LavaWorld(field, lava={(26, 20)})
+    agent = AgentState(x=20, y=20)
+    tick(agent, world, random.Random(1), config)
+    assert (27, 20) not in agent.memory
+
+
+def test_death_leaves_the_gear_where_the_body_fell():
+    """The loop the aquarium is built around: memory survives, gear does not
+    follow, so the next life can walk back and take it."""
+    world = PopulatedWorld(_open_field(), [_monster(21, 20, "D")])
+    agent = AgentState(x=20, y=20)
+    rng = random.Random(1)
+    tick(agent, world, rng, DEFAULT_CONFIG)
+    agent.equipped["weapon"] = _loot("weapon", 0, 0, "cruel")
+    agent.stats.hp = 1
+    for _ in range(30):
+        tick(agent, world, rng, DEFAULT_CONFIG)
+        if agent.deaths:
+            break
+    assert agent.deaths == 1
+    assert agent.equipped == {}
+    assert any(kind == "weapon" for kind, _, _ in world.dropped)
+    assert any(kind == "grave" for kind, _, _ in world.dropped)
+
+
+def test_picking_up_gear_at_a_grave_counts_as_robbing_it():
+    world = PopulatedWorld(_open_field(), items=[_loot("weapon", 21, 20, "cruel")])
+    agent = AgentState(x=20, y=20)
+    agent.grave_sites.add((21, 20))
+    _walk_onto(agent, world, DEFAULT_CONFIG, (21, 20))
+    assert agent.graves_robbed == 1
+    assert any("grave" in text for _, text in agent.log.recent())
+
+
+def test_ordinary_pickups_are_not_grave_robbing():
+    world = PopulatedWorld(_open_field(), items=[_loot("weapon", 21, 20, "cruel")])
+    agent = AgentState(x=20, y=20)
+    _walk_onto(agent, world, DEFAULT_CONFIG, (21, 20))
+    assert agent.graves_robbed == 0
+
+
+def test_the_chronicle_fills_up_as_things_happen():
+    world = PopulatedWorld(_open_field(), [_monster(21, 20, "r")])
+    agent = AgentState(x=20, y=20)
+    agent.explorer.path = [(21, 20)]
+    tick(agent, world, random.Random(1), DEFAULT_CONFIG)
+    assert any("rat" in text for _, text in agent.log.recent())

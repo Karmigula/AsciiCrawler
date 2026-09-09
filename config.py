@@ -132,6 +132,15 @@ class Config:
     loot_expectation: float = 3.0  # assumed upgrade from an unknown slot item
     backpack_size: int = 6
 
+    # flourishes (Phase 7)
+    chronicle_length: int = 8  # lines of recent history kept for the HUD
+    lava_glow_radius: int = 3  # lava lights its surroundings, seen or not
+    lava_heat_damage: int = 2  # standing next to lava hurts, per tick
+    moss_chance: float = 0.06  # cosmetic floor tinting, seeded by position
+    moss_color: tuple[int, int, int] = (90, 130, 95)
+    ghost_rare_color: tuple[int, int, int] = (190, 160, 220)  # remembered loot
+    ghost_danger_color: tuple[int, int, int] = (210, 120, 120)  # remembered threat
+
     # traps: hidden until spotted or sprung
     trap_glyph: str = "^"
     trap_damage: int = 6

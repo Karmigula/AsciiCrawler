@@ -17,9 +17,10 @@ that do not model decay (and their tests) still want.
 `known` is the agent's memory — render and brain share one belief store, and
 this module never sees a world tile. When memory holds a snapshot of what
 stood on a tile (a monster, an item), that glyph is drawn instead of the
-terrain in `ghost_color`: at full strength while visible, dimmed by the tier
-factor once it is only a memory. That is deliberately crude; Phase 7 refines
-how ghosts look.
+terrain: at full strength while visible, dimmed by the tier factor once it is
+only a memory. Remembered monsters and remembered loot take separate colours,
+because they are different kinds of news and a watcher should be able to tell
+them apart without reading the glyph.
 """
 
 from collections.abc import Container, Mapping, Sequence
@@ -79,6 +80,8 @@ def fog_grid(
     stale_factor: float | None = None,
     stale_fraction: float = 0.5,
     ghost_color: Color = (150, 150, 160),
+    ghost_entity_color: Color | None = None,
+    ghost_item_color: Color | None = None,
 ) -> list[list[Cell | None]]:
     """Build the drawable grid: (glyph, color) per tile, None for nothing known.
 
@@ -111,8 +114,13 @@ def fog_grid(
             draw, base = glyph, palette[glyph]
             if snapshot_of is not None:
                 entity, item = snapshot_of(coord)
-                if entity is not None or item is not None:
-                    draw, base = (entity or item), ghost_color
+                if entity is not None:
+                    # Remembered monsters and remembered loot are different
+                    # kinds of news, and a watcher should be able to tell them
+                    # apart at a glance without reading the glyph.
+                    draw, base = entity, ghost_entity_color or ghost_color
+                elif item is not None:
+                    draw, base = item, ghost_item_color or ghost_color
             cells.append((draw, base if factor == 1.0 else shade(base, factor)))
         grid.append(cells)
     return grid

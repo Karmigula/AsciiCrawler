@@ -121,3 +121,14 @@ def help_lines(config) -> list[Line]:
         ("F4 plan F5 frontier", config.hud_dim_color),
         ("n new world   p screenshot", config.hud_dim_color),
     ]
+
+
+def chronicle_lines(agent, config) -> list[Line]:
+    """The recent past, oldest first, as the watcher should read it."""
+    entries = agent.log.recent(config.chronicle_length)
+    if not entries:
+        return []
+    lines: list[Line] = [("recently", config.hud_accent_color)]
+    for tick_at, text in entries:
+        lines.append((f" {tick_at:>6}  {text}", config.hud_dim_color))
+    return lines

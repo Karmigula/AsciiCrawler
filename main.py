@@ -28,7 +28,8 @@ import pygame
 from agent.fov import compute_fov
 from config import DEFAULT_CONFIG, Config
 from render.fog import fog_grid
-from render.hud import equipment_lines, help_lines, hud_lines
+from render.hud import chronicle_lines, equipment_lines, help_lines, hud_lines
+from render.flourish import speckle_moss
 from render.overlays import OVERLAY_NAMES, apply_overlay
 from render.screen import Screen
 from sim.tick import AgentState, tick
@@ -128,7 +129,10 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
             stale_factor=config.stale_brightness,
             stale_fraction=config.memory_stale_fraction,
             ghost_color=config.ghost_color,
+            ghost_entity_color=config.ghost_danger_color,
+            ghost_item_color=config.ghost_rare_color,
         )
+        cells = speckle_moss(cells, origin, Tile.FLOOR.glyph, config)
         if overlay is not None:
             cells = apply_overlay(cells, overlay, origin, agent, visible, mind)
         screen.draw_cells(cells)
@@ -137,6 +141,7 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
         )
         if show_hud:
             screen.draw_panel(hud_lines(agent, len(world), config, speed, paused))
+            screen.draw_panel(chronicle_lines(agent, config), right=False, top=False)
             screen.draw_panel(
                 equipment_lines(agent, config) + [("", config.hud_color)] + help_lines(config),
                 right=True,

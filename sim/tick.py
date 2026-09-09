@@ -29,9 +29,12 @@ from agent.goals import DIRS_8, ExploreGoal, FleeGoal, LootGoal
 from agent.loadout import best_assignment, derive, effective_config, score
 from agent.memory import Memory
 from config import Config
+from world.tiles import Tile
 from agent.stats import Stats
 from sim.ai import take_turns
 from sim.combat import agent_hits_monster, xp_for
+from sim import chronicle as story
+from sim.chronicle import Chronicle
 from sim.perks import on_kill
 from sim.items import GRAVE
 
@@ -74,6 +77,10 @@ class AgentState:
     deaths: int = 0
     traps_found: int = 0
     traps_sprung: int = 0
+    graves_robbed: int = 0
+    grave_sites: set = field(default_factory=set)
+    heat_damage: int = 0
+    log: Chronicle = field(default_factory=Chronicle)
     damage_taken: int = 0
 
 
@@ -89,6 +96,7 @@ def tick(agent: AgentState, world, rng: random.Random, config: Config) -> None:
     _observe(agent, world, mind)
     _pick_up(agent, world, config)
     _quaff(agent, config)
+    _burn(agent, world, config)
     _spot_traps(agent, world, rng, config)
     _forget(agent, mind)
     _scan_active(agent, world, config)
@@ -130,6 +138,11 @@ def _pick_up(agent: AgentState, world, config: Config) -> None:
     if item is None:
         return
     agent.pickups += 1
+    if (agent.x, agent.y) in agent.grave_sites:
+        agent.graves_robbed += 1
+        agent.log.record(agent.tick_count, story.robbed_grave())
+    else:
+        agent.log.record(agent.tick_count, story.found(item))
     if item.kind.key == "gold":
         agent.gold += 1
         return
@@ -242,6 +255,7 @@ def _spring_trap(agent: AgentState, world, config: Config) -> None:
     trap.hidden = False
     agent.damage_taken += agent.stats.take(config.trap_damage)
     agent.traps_sprung += 1
+    agent.log.record(agent.tick_count, story.sprang_trap(config.trap_damage))
     agent.memory.mark_hazard(
         (agent.x, agent.y), agent.tick_count, world.tile_at(agent.x, agent.y)
     )
@@ -259,6 +273,7 @@ def _spot_traps(agent: AgentState, world, rng: random.Random, config: Config) ->
                 continue
             trap.hidden = False
             agent.traps_found += 1
+            agent.log.record(agent.tick_count, story.spotted_trap())
         if not agent.memory.believes_hazard(coord):
             agent.memory.mark_hazard(coord, agent.tick_count, world.tile_at(*coord))
 
@@ -268,7 +283,11 @@ def _kill(agent: AgentState, monster, world, rng: random.Random, config: Config)
     where = (monster.x, monster.y)
     world.remove_entity(monster)
     agent.kills += 1
+    agent.log.record(agent.tick_count, story.killed(monster))
+    before = agent.stats.level
     agent.stats.gain_xp(xp_for(monster, config), config)
+    if agent.stats.level > before:
+        agent.log.record(agent.tick_count, story.levelled(agent.stats.level))
     if agent.derived is not None:
         on_kill(agent.derived, agent.stats, config)
     if rng.random() < config.monster_drop_chance:
@@ -288,6 +307,15 @@ def _resolve_death(agent: AgentState, world, config: Config) -> None:
         return
     if hasattr(world, "drop_item"):
         world.drop_item(GRAVE, agent.x, agent.y)
+        # Everything it was carrying stays where it fell. The next life can
+        # walk back and take it - which is the whole point of memory surviving
+        # death, and closes the loop the aquarium is built around.
+        for item in [*agent.equipped.values(), *agent.backpack]:
+            world.drop_item(item.kind, agent.x, agent.y, item=item)
+    agent.equipped = {}
+    agent.backpack = []
+    agent.grave_sites.add((agent.x, agent.y))
+    agent.log.record(agent.tick_count, story.died())
     agent.deaths += 1
     agent.stats = Stats.starting(config)
     agent.fleer.stand_down()
@@ -325,11 +353,49 @@ def _observe(agent: AgentState, world, config: Config) -> None:
         for ly in range(2 * radius + 1)
     ]
     visible = compute_fov(window, (radius, radius), radius)
+    visible |= _lava_glow(window, radius, config)
     observation = {
         (origin_x + lx, origin_y + ly): window[ly][lx] for lx, ly in visible
     }
     entities, items = _things_seen(world, observation)
     agent.memory.observe(observation, agent.tick_count, entities, items)
+
+
+def _lava_glow(window, radius: int, config: Config) -> set:
+    """Lava lights its own surroundings, whether or not the agent has line of
+    sight to them.
+
+    Deep caverns are otherwise a wall of unknown with a red dot in it; letting
+    the pools throw light is what makes the far biome look like a place rather
+    than a texture. It is generous rather than physical - the glow ignores
+    walls within its small radius - and that generosity is the point.
+    """
+    glow_radius = config.lava_glow_radius
+    if glow_radius <= 0:
+        return set()
+    lit: set = set()
+    size = 2 * radius + 1
+    for ly in range(size):
+        for lx in range(size):
+            if window[ly][lx] is not Tile.LAVA:
+                continue
+            for dy in range(-glow_radius, glow_radius + 1):
+                for dx in range(-glow_radius, glow_radius + 1):
+                    nx, ny = lx + dx, ly + dy
+                    if 0 <= nx < size and 0 <= ny < size:
+                        lit.add((nx, ny))
+    return lit
+
+
+def _burn(agent: AgentState, world, config: Config) -> None:
+    """Standing next to lava hurts. The deep biome should cost something."""
+    if config.lava_heat_damage <= 0 or not agent.stats.alive:
+        return
+    for dx, dy in DIRS_8:
+        if world.tile_at(agent.x + dx, agent.y + dy) is Tile.LAVA:
+            agent.heat_damage += agent.stats.take(config.lava_heat_damage)
+            agent.damage_taken += config.lava_heat_damage
+            return
 
 
 def _things_seen(world, observation) -> tuple[dict, dict]:
