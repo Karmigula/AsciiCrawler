@@ -42,6 +42,8 @@ class SimStats:
     frontier_starved_ticks: int  # ticks with no frontier left to aim at
     decisions: int  # EXPLORE decisions made
     flights: int  # FLEE decisions taken
+    traps_found: int  # traps spotted before stepping in them
+    traps_sprung: int  # ...and traps discovered the hard way
     kills: int  # monsters the agent killed
     deaths: int  # times the agent died and started over
     damage_taken: int  # total hp lost across the run
@@ -82,6 +84,8 @@ def run_ticks(n: int, seed: int, config: Config = DEFAULT_CONFIG) -> SimStats:
         frontier_starved_ticks=starved,
         decisions=agent.explorer.decisions,
         flights=agent.fleer.flights,
+        traps_found=agent.traps_found,
+        traps_sprung=agent.traps_sprung,
         kills=agent.kills,
         deaths=agent.deaths,
         damage_taken=agent.damage_taken,

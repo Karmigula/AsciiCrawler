@@ -35,7 +35,12 @@ def _octile(a: Position, b: Position) -> float:
 
 
 def _neighbors(memory: Memory, pos: Position):
-    """Yield (neighbor, step_cost) over believed floors, corner-cut safe."""
+    """Yield (neighbor, step_cost) over believed floors, corner-cut safe.
+
+    Tiles the agent knows are trapped are not offered. It can still step off
+    one it is standing on (only neighbours are filtered), and it will still
+    walk into traps it has never spotted or has since forgotten.
+    """
     x, y = pos
     for dx, dy in DIRS_8:
         if dx != 0 and dy != 0 and not (
@@ -43,7 +48,7 @@ def _neighbors(memory: Memory, pos: Position):
         ):
             continue
         nxt = (x + dx, y + dy)
-        if memory.believes_passable(nxt):
+        if memory.believes_passable(nxt) and not memory.believes_hazard(nxt):
             yield nxt, _SQRT2 if dx != 0 and dy != 0 else 1.0
 
 

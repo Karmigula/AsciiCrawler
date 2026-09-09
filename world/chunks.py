@@ -201,6 +201,29 @@ class ChunkStore:
                 added += 1
         return added
 
+    def trap_at(self, x: int, y: int):
+        """The trap on a global tile, hidden or not."""
+        return self.contents_at(x, y).trap_at(x, y)
+
+    def traps_near(self, origin: Position, radius: int) -> list:
+        """Traps within `radius` of a point, from already-generated chunks."""
+        size = self._config.chunk_size
+        ox, oy = origin
+        span = radius // size + 1
+        cx, cy = self.chunk_coords(ox, oy)
+        found = []
+        for dy in range(-span, span + 1):
+            for dx in range(-span, span + 1):
+                chunk = self._chunks.get((cx + dx, cy + dy))
+                if chunk is None:
+                    continue
+                found.extend(
+                    trap
+                    for trap in chunk.contents.traps
+                    if max(abs(trap.x - ox), abs(trap.y - oy)) <= radius
+                )
+        return found
+
     def active_entities(self, origin: Position, radius: int) -> list[Monster]:
         """Monsters inside the activation radius (Chebyshev, the agent's metric).
 

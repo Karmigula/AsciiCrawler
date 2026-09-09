@@ -49,9 +49,9 @@ class Item:
     y: int
 
 
-@dataclass(frozen=True)
+@dataclass
 class Trap:
-    """A placed trap. Hidden until Phase 4 gives the agent detection."""
+    """A placed trap. Hidden until the agent spots it or steps in it."""
 
     x: int
     y: int
@@ -96,6 +96,12 @@ class ChunkContents:
         if self._item_index is None:
             self._item_index = {(i.x, i.y): i for i in self.items}
         return self._item_index.get((x, y))
+
+    def trap_at(self, x: int, y: int) -> "Trap | None":
+        for trap in self.traps:
+            if trap.x == x and trap.y == y:
+                return trap
+        return None
 
 
 def chunk_distance(cx: int, cy: int, config: Config) -> float:

@@ -96,6 +96,12 @@ class Config:
     respawn_distance: int = 60  # tiles; nearer than this and nothing respawns
     respawn_check_interval: int = 100  # ticks between respawn sweeps
 
+    # traps: hidden until spotted or sprung
+    trap_glyph: str = "^"
+    trap_damage: int = 6
+    trap_detect_radius: int = 4  # tiles; a trap further off is never noticed
+    trap_detect_chance: float = 0.25  # per tick, per trap in range
+
     # fear: threat read off memory, never off world truth
     threat_radius: int = 10  # tiles; remembered monsters further out are ignored
     w_threat: float = 2.5  # how hard threat discounts an EXPLORE candidate

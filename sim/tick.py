@@ -50,6 +50,8 @@ class AgentState:
     stats: Stats | None = None  # filled from config on the first tick
     kills: int = 0
     deaths: int = 0
+    traps_found: int = 0
+    traps_sprung: int = 0
     damage_taken: int = 0
 
 
@@ -62,6 +64,7 @@ def tick(agent: AgentState, world, rng: random.Random, config: Config) -> None:
     world.ensure_loaded((agent.x, agent.y))
     _act(agent, world, rng, config)
     _observe(agent, world, config)
+    _spot_traps(agent, world, rng, config)
     _forget(agent, config)
     _scan_active(agent, world, config)
     _monsters_act(agent, world, rng, config)
@@ -94,7 +97,10 @@ def _wander_ok(agent: AgentState, dx: int, dy: int) -> bool:
         and agent.memory.believes_passable((agent.x, agent.y + dy))
     ):
         return False
-    return agent.memory.believes_passable((agent.x + dx, agent.y + dy))
+    target = (agent.x + dx, agent.y + dy)
+    return agent.memory.believes_passable(target) and not agent.memory.believes_hazard(
+        target
+    )
 
 
 def _try_step(
@@ -119,7 +125,40 @@ def _try_step(
             _kill(agent, monster, world, rng, config)
         return True
     agent.x, agent.y = nxt
+    _spring_trap(agent, world, config)
     return True
+
+
+def _spring_trap(agent: AgentState, world, config: Config) -> None:
+    """Stepping on a hidden trap sets it off; a known one is just scenery."""
+    trap_at = getattr(world, "trap_at", None)
+    if trap_at is None:
+        return
+    trap = trap_at(agent.x, agent.y)
+    if trap is None or not trap.hidden:
+        return
+    trap.hidden = False
+    agent.damage_taken += agent.stats.take(config.trap_damage)
+    agent.traps_sprung += 1
+    agent.memory.mark_hazard(
+        (agent.x, agent.y), agent.tick_count, world.tile_at(agent.x, agent.y)
+    )
+
+
+def _spot_traps(agent: AgentState, world, rng: random.Random, config: Config) -> None:
+    """Roll to notice nearby traps, and remember the ones already revealed."""
+    traps_near = getattr(world, "traps_near", None)
+    if traps_near is None:
+        return
+    for trap in traps_near((agent.x, agent.y), config.trap_detect_radius):
+        coord = (trap.x, trap.y)
+        if trap.hidden:
+            if rng.random() >= config.trap_detect_chance:
+                continue
+            trap.hidden = False
+            agent.traps_found += 1
+        if not agent.memory.believes_hazard(coord):
+            agent.memory.mark_hazard(coord, agent.tick_count, world.tile_at(*coord))
 
 
 def _kill(agent: AgentState, monster, world, rng: random.Random, config: Config) -> None:

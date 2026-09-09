@@ -34,6 +34,7 @@ class MemoryRecord:
     last_seen_tick: int
     last_entity_snapshot: str | None = None
     last_item: str | None = None
+    known_trap: bool = False
 
 
 class Memory:
@@ -98,6 +99,27 @@ class Memory:
         if expired:
             self.generation += 1
         return len(expired)
+
+    def mark_hazard(self, coord: Position, tick: int, terrain: Tile) -> None:
+        """Remember that this tile has a trap in it.
+
+        Survives re-sighting, unlike the entity and item snapshots: a trap the
+        agent has spotted does not become invisible again just because it
+        looked a second time. It is forgotten only when the record is pruned,
+        which is decay doing its job — the agent really can walk back into a
+        trap it has forgotten about.
+        """
+        record = self._records.get(coord)
+        if record is None:
+            record = MemoryRecord(terrain_belief=terrain, last_seen_tick=tick)
+            self._records[coord] = record
+            self.generation += 1
+        record.known_trap = True
+
+    def believes_hazard(self, coord: Position) -> bool:
+        """True for tiles the agent knows to be trapped."""
+        record = self._records.get(coord)
+        return record is not None and record.known_trap
 
     def snapshot(self, coord: Position) -> tuple[str | None, str | None]:
         """(entity glyph, item glyph) last seen on coord; (None, None) if unseen."""
