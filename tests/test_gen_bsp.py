@@ -5,8 +5,8 @@ from config import DEFAULT_CONFIG
 from world.gen_bsp import generate
 from world.tiles import Tile
 
-WIDTH = DEFAULT_CONFIG.map_width
-HEIGHT = DEFAULT_CONFIG.map_height
+WIDTH = DEFAULT_CONFIG.chunk_size  # BSP now generates per-chunk
+HEIGHT = DEFAULT_CONFIG.chunk_size
 MIN_PARTITION = DEFAULT_CONFIG.bsp_min_partition
 MIN_ROOM = DEFAULT_CONFIG.bsp_min_room
 

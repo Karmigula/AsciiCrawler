@@ -4,8 +4,24 @@ from config import DEFAULT_CONFIG
 from sim.tick import AgentState, tick
 from world.tiles import Tile
 
-# ticks to fully sweep the 96x54 open field (measured ~2500; margin on top)
+# ticks to sweep a large open field (measured ~2500 for 96x54; margin on top)
 OPEN_FIELD_TICKS = 4000
+
+
+class FiniteWorld:
+    """The old finite-grid world behind the chunk-store interface: tile_at
+    answers WALL outside the grid, streaming is a no-op."""
+
+    def __init__(self, tiles: list[list[Tile]]) -> None:
+        self.tiles = tiles
+
+    def tile_at(self, x: int, y: int) -> Tile:
+        if 0 <= y < len(self.tiles) and 0 <= x < len(self.tiles[0]):
+            return self.tiles[y][x]
+        return Tile.WALL
+
+    def ensure_loaded(self, position: tuple[int, int]) -> None:
+        pass
 
 
 def _open_field(width: int = 96, height: int = 54) -> list[list[Tile]]:
@@ -20,12 +36,12 @@ def _open_field(width: int = 96, height: int = 54) -> list[list[Tile]]:
 
 
 def _walk(seed: int, steps: int, start: tuple[int, int]):
-    tiles = _open_field()
+    world = FiniteWorld(_open_field())
     rng = random.Random(seed)
     agent = AgentState(x=start[0], y=start[1])
     positions = []
     for _ in range(steps):
-        tick(agent, tiles, rng, DEFAULT_CONFIG)
+        tick(agent, world, rng, DEFAULT_CONFIG)
         positions.append((agent.x, agent.y))
     return agent, positions
 
@@ -40,10 +56,11 @@ def test_tick_moves_at_most_one_cell_per_tick():
 
 def test_tick_never_enters_a_wall():
     tiles = _open_field()
+    world = FiniteWorld(tiles)
     rng = random.Random(99)
     agent = AgentState(x=48, y=27)
     for _ in range(2000):
-        tick(agent, tiles, rng, DEFAULT_CONFIG)
+        tick(agent, world, rng, DEFAULT_CONFIG)
         assert tiles[agent.y][agent.x] is Tile.FLOOR
 
 
@@ -69,10 +86,11 @@ def test_tick_only_uses_passable_neighbors_in_a_corridor():
     tiles = [[Tile.WALL] * 5 for _ in range(5)]
     for x in range(1, 4):
         tiles[2][x] = Tile.FLOOR
+    world = FiniteWorld(tiles)
     rng = random.Random(7)
     agent = AgentState(x=2, y=2)
     for _ in range(200):
-        tick(agent, tiles, rng, DEFAULT_CONFIG)
+        tick(agent, world, rng, DEFAULT_CONFIG)
         assert agent.y == 2
         assert 1 <= agent.x <= 3
 
@@ -80,9 +98,10 @@ def test_tick_only_uses_passable_neighbors_in_a_corridor():
 def test_tick_stays_put_when_enclosed_by_walls():
     tiles = [[Tile.WALL] * 3 for _ in range(3)]
     tiles[1][1] = Tile.FLOOR
+    world = FiniteWorld(tiles)
     agent = AgentState(x=1, y=1)
     for _ in range(100):
-        tick(agent, tiles, random.Random(3), DEFAULT_CONFIG)
+        tick(agent, world, random.Random(3), DEFAULT_CONFIG)
         assert (agent.x, agent.y) == (1, 1)
 
 
@@ -96,11 +115,29 @@ def test_tick_refuses_steps_that_world_truth_rejects():
     tiles = [[Tile.WALL] * 5 for _ in range(5)]
     for x in range(1, 4):
         tiles[2][x] = Tile.FLOOR  # truth: corridor ends at x = 3
+    world = FiniteWorld(tiles)
     agent = AgentState(x=3, y=2)
     agent.memory.observe(
         {(x, 2): Tile.FLOOR for x in range(1, 6)}, tick=0
     )  # belief: corridor continues to x = 5
     for _ in range(10):
-        tick(agent, tiles, random.Random(0), DEFAULT_CONFIG)
+        tick(agent, world, random.Random(0), DEFAULT_CONFIG)
         assert tiles[agent.y][agent.x] is Tile.FLOOR  # physics never lied to
         assert agent.y == 2 and 1 <= agent.x <= 3  # real corridor only
+
+
+def test_tick_refuses_to_step_into_liquid():
+    """WATER/LAVA are impassable: a believed-passable pond is not entered."""
+    tiles = [[Tile.WALL] * 5 for _ in range(5)]
+    for x in range(1, 4):
+        tiles[2][x] = Tile.FLOOR
+    tiles[2][3] = Tile.WATER  # truth: the corridor drowns at x = 3
+    world = FiniteWorld(tiles)
+    agent = AgentState(x=2, y=2)
+    agent.memory.observe(
+        {(x, 2): Tile.FLOOR for x in range(1, 5)}, tick=0
+    )  # belief: dry corridor to x = 4
+    for _ in range(20):
+        tick(agent, world, random.Random(0), DEFAULT_CONFIG)
+        assert (agent.x, agent.y) == (2, 2) or tiles[agent.y][agent.x] is Tile.FLOOR
+        assert not (agent.x == 3 and agent.y == 2)  # never stands in the water

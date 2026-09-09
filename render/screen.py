@@ -33,24 +33,30 @@ class Screen:
         self._margin_x = (config.window_width - self._cols * config.cell_size) // 2
         self._margin_y = (config.window_height - self._rows * config.cell_size) // 2
 
+    @property
+    def view_dims(self) -> tuple[int, int]:
+        """The glyph-grid size of the view: (cols, rows)."""
+        return self._cols, self._rows
+
+    def camera_origin(self, camera_center: Position) -> Position:
+        """World cell at the top-left corner of the view for this camera."""
+        return self._origin(camera_center)
+
     def draw_cells(
         self,
         cells: Sequence[Sequence[tuple[str, Color] | None]],
-        camera_center: Position,
     ) -> None:
-        """Draw the visible slice of a cell grid; None cells stay blank."""
+        """Draw a cell window; None cells stay blank.
+
+        `cells` must be aligned with the camera window: its [0][0] entry is
+        the world cell at `camera_origin(camera_center)` for the same camera
+        later handed to `draw_glyph` — build it via `camera_origin` and
+        `view_dims`. Only the handed state is read; rows beyond the view are
+        clipped.
+        """
         self._window.fill(self._config.background_color)
-        origin_x, origin_y = self._origin(camera_center)
-        for row in range(self._rows):
-            grid_y = origin_y + row
-            if not 0 <= grid_y < len(cells):
-                continue
-            line = cells[grid_y]
-            for col in range(self._cols):
-                grid_x = origin_x + col
-                if not 0 <= grid_x < len(line):
-                    continue
-                cell = line[grid_x]
+        for row, line in enumerate(cells[: self._rows]):
+            for col, cell in enumerate(line[: self._cols]):
                 if cell is not None:
                     self._blit_glyph(cell[0], col, row, cell[1])
 

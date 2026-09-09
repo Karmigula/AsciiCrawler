@@ -27,16 +27,25 @@ def fog_grid(
     visible: set[Position],
     known: Container[Position],
     remembered_factor: float,
+    *,
+    origin: Position = (0, 0),
 ) -> list[list[Cell | None]]:
-    """Build the drawable grid: (glyph, color) per tile, None for never-seen."""
+    """Build the drawable grid: (glyph, color) per tile, None for never-seen.
+
+    `rows` is a window whose top-left cell sits at world coordinate `origin`;
+    `visible` and `known` are world-coordinate sets, matched against the
+    window through that offset (default (0, 0) keeps local-coordinate rows
+    working).
+    """
+    origin_x, origin_y = origin
     grid: list[list[Cell | None]] = []
     for y, line in enumerate(rows):
         cells: list[Cell | None] = []
         for x, glyph in enumerate(line):
             base = palette[glyph]
-            if (x, y) in visible:
+            if (x + origin_x, y + origin_y) in visible:
                 cells.append((glyph, base))
-            elif (x, y) in known:
+            elif (x + origin_x, y + origin_y) in known:
                 cells.append((glyph, shade(base, remembered_factor)))
             else:
                 cells.append(None)

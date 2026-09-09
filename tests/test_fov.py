@@ -75,15 +75,15 @@ def test_fov_sealed_room_leaks_nothing():
 
 
 def test_fov_symmetric_inside_a_generated_room():
-    cfg = DEFAULT_CONFIG
+    width, height = 96, 54  # a roomy BSP canvas, independent of world config
     tiles = generate(
-        random.Random(cfg.map_seed), cfg.map_width, cfg.map_height,
-        cfg.bsp_min_partition, cfg.bsp_min_room,
+        random.Random(4242), width, height,
+        DEFAULT_CONFIG.bsp_min_partition, DEFAULT_CONFIG.bsp_min_room,
     )
     open_cells = [
         (x, y)
-        for y in range(3, cfg.map_height - 3)
-        for x in range(3, cfg.map_width - 3)
+        for y in range(3, height - 3)
+        for x in range(3, width - 3)
         if all(tiles[yy][xx] is Tile.FLOOR for yy in range(y - 3, y + 4) for xx in range(x - 3, x + 4))
     ]
     assert open_cells, "expected at least one 7x7 open area in the generated map"

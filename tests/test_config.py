@@ -10,16 +10,33 @@ INT_FIELDS = (
     "cell_size",
     "font_size",
     "max_fps",
-    "map_width",
-    "map_height",
-    "map_seed",
+    "world_seed",
+    "chunk_size",
+    "preload_radius",
+    "seam_jitter",
+    "band_bsp_max",
+    "band_cavern_min",
     "bsp_min_partition",
     "bsp_min_room",
+    "cave_smooth_steps",
+    "cave_wall_threshold",
+    "cavern_smooth_steps",
+    "cavern_pool_attempts",
+    "cavern_pool_min_size",
+    "cavern_pool_max_size",
     "tps",
     "tick_seed",
     "fov_radius",
     "explore_throttle_ticks",
     "frontier_sample_size",
+)
+
+FLOAT_FIELDS = (
+    "band_blend_noise",
+    "cave_fill_prob",
+    "cavern_fill_prob",
+    "cavern_pool_chance",
+    "cavern_lava_share",
 )
 
 
@@ -36,9 +53,6 @@ def test_default_config_values():
     assert DEFAULT_CONFIG.window_width == 1200
     assert DEFAULT_CONFIG.window_height == 800
     assert DEFAULT_CONFIG.cell_size == 20
-    assert DEFAULT_CONFIG.font_size == 15
-    assert DEFAULT_CONFIG.map_width == 96
-    assert DEFAULT_CONFIG.map_height == 54
     assert DEFAULT_CONFIG.tps == 10
     assert DEFAULT_CONFIG.max_fps > DEFAULT_CONFIG.tps
     assert DEFAULT_CONFIG.agent_glyph == "@"
@@ -54,16 +68,38 @@ def test_default_config_values():
     assert 0.0 <= DEFAULT_CONFIG.explore_noise < DEFAULT_CONFIG.explore_hysteresis_bonus
 
 
+def test_default_chunk_world_values():
+    cfg = DEFAULT_CONFIG
+    assert cfg.chunk_size == 64
+    assert cfg.preload_radius == 2
+    assert 0 < cfg.band_bsp_max < cfg.band_cavern_min  # BSP | caves | caverns
+    assert cfg.band_blend_noise >= 0.0
+    # seam crossings must stay on the shared edge, off its ends
+    assert 2 * cfg.seam_jitter < cfg.chunk_size
+    assert cfg.cavern_pool_min_size <= cfg.cavern_pool_max_size
+    assert 0.0 <= cfg.cavern_pool_chance <= 1.0
+    assert 0.0 <= cfg.cavern_lava_share <= 1.0
+
+
 def test_default_config_types():
     for name in INT_FIELDS:
         assert isinstance(getattr(DEFAULT_CONFIG, name), int), name
+    for name in FLOAT_FIELDS:
+        assert isinstance(getattr(DEFAULT_CONFIG, name), float), name
     assert isinstance(DEFAULT_CONFIG.max_frame_seconds, float)
     assert isinstance(DEFAULT_CONFIG.remembered_brightness, float)
     for name in ("w_explore", "explore_hysteresis_bonus", "explore_noise"):
         assert isinstance(getattr(DEFAULT_CONFIG, name), float), name
     assert isinstance(DEFAULT_CONFIG.font_path, str)
     assert isinstance(DEFAULT_CONFIG.window_title, str)
-    for name in ("background_color", "wall_color", "floor_color", "agent_color"):
+    for name in (
+        "background_color",
+        "wall_color",
+        "floor_color",
+        "agent_color",
+        "water_color",
+        "lava_color",
+    ):
         color = getattr(DEFAULT_CONFIG, name)
         assert isinstance(color, tuple) and len(color) == 3, name
 

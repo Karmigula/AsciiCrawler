@@ -51,3 +51,16 @@ def test_fog_grid_reads_the_agents_memory_as_the_known_tier():
     assert grid[0][1] == (".", (60, 60, 60))  # remembered: dimmed
     assert grid[1][0] == ("#", (120, 120, 120))  # remembered wall: dimmed
     assert grid[1][1] is None  # never seen: blank
+
+
+def test_fog_grid_matches_world_coordinates_through_origin():
+    """A world-window whose top-left is not (0, 0): global visible/known sets
+    are matched against window cells through the origin offset."""
+    memory = Memory()
+    memory.observe({(102, 51): Tile.FLOOR}, tick=1)
+    rows = ["..", ".."]
+    palette = {".": (100, 100, 100)}
+    grid = fog_grid(rows, palette, {(101, 50)}, memory, 0.6, origin=(101, 50))
+    assert grid[0][0] == (".", (100, 100, 100))  # (101, 50) visible
+    assert grid[1][1] == (".", (60, 60, 60))  # (102, 51) remembered, dimmed
+    assert grid[0][1] is None  # (102, 50) never seen

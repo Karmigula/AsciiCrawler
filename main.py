@@ -1,8 +1,10 @@
 """Wiring, fixed-timestep game loop, and controls (ESC to quit).
 
-The loop only orchestrates: ticks advance agent + memory, then rendering
-recomputes FOV for the frame and shades it through the same memory the
-brain uses. No decisions are made here.
+The loop only orchestrates: ticks advance the agent through the infinite
+chunk world, then rendering hands the screen a world-window of glyph rows
+around the camera (built through `tile_at`), shades it through the same
+memory the brain uses, and draws the agent on top. No decisions are made
+here; the camera simply follows the agent across chunk borders.
 """
 
 import random
@@ -13,25 +15,22 @@ from agent.fov import compute_fov
 from config import DEFAULT_CONFIG, Config
 from render.fog import fog_grid
 from render.screen import Screen
-from sim.harness import spawn_position
 from sim.tick import AgentState, tick
-from world.gen_bsp import generate
+from world.chunks import ChunkStore
 from world.tiles import Tile
 
 
 def main(config: Config = DEFAULT_CONFIG) -> None:
-    tiles = generate(
-        random.Random(config.map_seed),
-        config.map_width,
-        config.map_height,
-        config.bsp_min_partition,
-        config.bsp_min_room,
-    )
-    rows = ["".join(tile.glyph for tile in row) for row in tiles]
-    palette = {Tile.WALL.glyph: config.wall_color, Tile.FLOOR.glyph: config.floor_color}
+    world = ChunkStore(config, world_seed=config.world_seed)
+    spawn = world.spawn
     rng = random.Random(config.tick_seed)
-    spawn_x, spawn_y = spawn_position(tiles, config.map_width // 2, config.map_height // 2)
-    agent = AgentState(x=spawn_x, y=spawn_y)
+    agent = AgentState(x=spawn[0], y=spawn[1])
+    palette = {
+        Tile.WALL.glyph: config.wall_color,
+        Tile.FLOOR.glyph: config.floor_color,
+        Tile.WATER.glyph: config.water_color,
+        Tile.LAVA.glyph: config.lava_color,
+    }
     screen = Screen(config)
     clock = pygame.time.Clock()
     tick_duration = 1.0 / config.tps
@@ -46,15 +45,45 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 running = False
         while accumulator >= tick_duration:
-            tick(agent, tiles, rng, config)
+            tick(agent, world, rng, config)
             accumulator -= tick_duration
-        fov = compute_fov(tiles, (agent.x, agent.y), config.fov_radius)
-        cells = fog_grid(rows, palette, fov, agent.memory, config.remembered_brightness)
         camera = (agent.x, agent.y)
-        screen.draw_cells(cells, camera)
+        origin = screen.camera_origin(camera)
+        cols, rows = screen.view_dims
+        rows_text = [
+            "".join(
+                world.tile_at(origin[0] + x, origin[1] + y).glyph
+                for x in range(cols)
+            )
+            for y in range(rows)
+        ]
+        visible = _fov_global(world, agent, config)
+        cells = fog_grid(
+            rows_text,
+            palette,
+            visible,
+            agent.memory,
+            config.remembered_brightness,
+            origin=origin,
+        )
+        screen.draw_cells(cells)
         screen.draw_glyph(config.agent_glyph, agent.x, agent.y, camera, config.agent_color)
         screen.present()
     screen.close()
+
+
+def _fov_global(world: ChunkStore, agent: AgentState, config: Config) -> set[tuple[int, int]]:
+    """Visible set in global coordinates (window semantics match the tick)."""
+    radius = config.fov_radius
+    origin_x, origin_y = agent.x - radius, agent.y - radius
+    window = [
+        [world.tile_at(origin_x + lx, origin_y + ly) for lx in range(2 * radius + 1)]
+        for ly in range(2 * radius + 1)
+    ]
+    return {
+        (origin_x + lx, origin_y + ly)
+        for lx, ly in compute_fov(window, (radius, radius), radius)
+    }
 
 
 if __name__ == "__main__":
