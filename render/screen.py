@@ -1,8 +1,8 @@
 """The pygame window: a fixed-size glyph grid with a directly-following camera.
 
 The only module besides main.py allowed to import pygame. It reads only the
-state handed to it (rows of characters, cell positions, colors) and never
-imports world/sim/agent modules, so it accepts the map as plain glyph rows.
+state handed to it (cells of glyph+color pairs or None for blank, positions)
+and never imports world/sim/agent modules.
 """
 
 from collections.abc import Mapping, Sequence
@@ -33,26 +33,26 @@ class Screen:
         self._margin_x = (config.window_width - self._cols * config.cell_size) // 2
         self._margin_y = (config.window_height - self._rows * config.cell_size) // 2
 
-    def draw_map(
+    def draw_cells(
         self,
-        rows: Sequence[str],
+        cells: Sequence[Sequence[tuple[str, Color] | None]],
         camera_center: Position,
-        palette: Mapping[str, Color],
     ) -> None:
-        """Draw the visible slice of a map given as rows of glyph characters."""
+        """Draw the visible slice of a cell grid; None cells stay blank."""
         self._window.fill(self._config.background_color)
         origin_x, origin_y = self._origin(camera_center)
         for row in range(self._rows):
             grid_y = origin_y + row
-            if not 0 <= grid_y < len(rows):
+            if not 0 <= grid_y < len(cells):
                 continue
-            line = rows[grid_y]
+            line = cells[grid_y]
             for col in range(self._cols):
                 grid_x = origin_x + col
                 if not 0 <= grid_x < len(line):
                     continue
-                glyph = line[grid_x]
-                self._blit_glyph(glyph, col, row, palette.get(glyph, self._config.floor_color))
+                cell = line[grid_x]
+                if cell is not None:
+                    self._blit_glyph(cell[0], col, row, cell[1])
 
     def draw_glyph(
         self,
