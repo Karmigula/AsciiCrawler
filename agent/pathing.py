@@ -34,12 +34,19 @@ def _octile(a: Position, b: Position) -> float:
     return max(dx, dy) + (_SQRT2 - 1.0) * min(dx, dy)
 
 
-def _neighbors(memory: Memory, pos: Position):
+def _neighbors(memory: Memory, pos: Position, hazard_cost: float = 12.0):
     """Yield (neighbor, step_cost) over believed floors, corner-cut safe.
 
-    Tiles the agent knows are trapped are not offered. It can still step off
-    one it is standing on (only neighbours are filtered), and it will still
-    walk into traps it has never spotted or has since forgotten.
+    A tile the agent knows is trapped costs `hazard_cost` extra rather than
+    being refused. Refusing them looks prudent and is a trap of its own: a
+    single remembered trap in a one-tile corridor walls the agent off from
+    everything beyond it, and since it still has a whole room to wander in,
+    nothing ever notices. One seed spent 83,000 of 100,000 ticks with nowhere
+    to go for exactly this reason.
+
+    The cost is a preference rather than a safeguard - a trap the agent has
+    spotted is no longer hidden, so walking over it does no damage. It steps
+    around when stepping around is cheap, and through when it is not.
     """
     x, y = pos
     for dx, dy in DIRS_8:
@@ -48,8 +55,12 @@ def _neighbors(memory: Memory, pos: Position):
         ):
             continue
         nxt = (x + dx, y + dy)
-        if memory.believes_passable(nxt) and not memory.believes_hazard(nxt):
-            yield nxt, _SQRT2 if dx != 0 and dy != 0 else 1.0
+        if not memory.believes_passable(nxt):
+            continue
+        step = _SQRT2 if dx != 0 and dy != 0 else 1.0
+        if memory.believes_hazard(nxt):
+            step += hazard_cost
+        yield nxt, step
 
 
 def astar(memory: Memory, start: Position, goal: Position) -> list[Position] | None:

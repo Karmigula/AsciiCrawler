@@ -231,6 +231,10 @@ class Config:
     trap_damage: int = 6
     trap_detect_radius: int = 4  # tiles; a trap further off is never noticed
     trap_detect_chance: float = 0.25  # per tick, per trap in range
+    # What a known trap adds to a step, in tiles of detour. Costly, never
+    # forbidden: one remembered trap in a one-tile corridor used to wall the
+    # agent off from the rest of its world for the rest of the run.
+    hazard_step_cost: float = 12.0
 
     # fear: threat read off memory, never off world truth
     threat_radius: int = 10  # tiles; remembered monsters further out are ignored

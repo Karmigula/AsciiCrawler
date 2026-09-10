@@ -94,15 +94,36 @@ def test_a_sprung_trap_does_not_fire_twice():
     assert agent.stats.hp == hurt
 
 
-def test_a_known_trap_is_routed_around():
-    """A one-tile gap holding a known trap should make the goal unreachable."""
+def test_a_known_trap_is_stepped_around_when_there_is_room():
+    """Given a detour, the agent takes it."""
+    memory = Memory()
+    walls = {(x, y): Tile.WALL for x in range(6) for y in (-1, 3)}
+    floors = {(x, y): Tile.FLOOR for x in range(6) for y in (0, 1, 2)}
+    memory.observe({**walls, **floors}, tick=1)
+    memory.mark_hazard((3, 1), tick=1, terrain=Tile.FLOOR)
+
+    path = astar(memory, (0, 1), (5, 1))
+
+    assert path is not None
+    assert (3, 1) not in path, "there was a way round"
+
+
+def test_a_known_trap_in_the_only_doorway_is_walked_through_anyway():
+    """The bug this cost: refusing a trapped corridor looks prudent, and walls
+    the agent off from everything beyond it. One seed spent 83,000 of 100,000
+    ticks with nowhere to go because a single remembered trap sat in a
+    one-tile gap - and it never noticed, because it still had a room to
+    wander in."""
     memory = Memory()
     walls = {(x, y): Tile.WALL for x in range(6) for y in (0, 2)}
     floors = {(x, 1): Tile.FLOOR for x in range(6)}
     memory.observe({**walls, **floors}, tick=1)
-    assert astar(memory, (0, 1), (5, 1)) is not None
     memory.mark_hazard((3, 1), tick=1, terrain=Tile.FLOOR)
-    assert astar(memory, (0, 1), (5, 1)) is None  # the only way through is trapped
+
+    path = astar(memory, (0, 1), (5, 1))
+
+    assert path is not None, "the only way through is still a way through"
+    assert (3, 1) in path
 
 
 def test_the_agent_can_step_off_a_trap_it_is_standing_on():

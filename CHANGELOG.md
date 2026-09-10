@@ -34,8 +34,9 @@ Nobody plays it.
   *craven* one makes it panic sooner, a *curious* one makes it value the
   unknown more. Gear changes how the creature behaves, not just how hard it
   hits.
-- **Traps.** It spots them, remembers them, walks around them — and steps on
-  one anyway when there is no other way past.
+- **Traps.** It spots them, remembers them, and steps around them when there is
+  room to — but a known trap is an inconvenience, not a wall, so it will walk
+  over one rather than give up on everything beyond it.
 
 ### Watching it
 

@@ -1,3 +1,5 @@
+import pytest
+
 from config import DEFAULT_CONFIG
 from sim.harness import run_ticks
 from world.chunks import ChunkStore
@@ -42,21 +44,33 @@ def _decaying(ttl: int = 150, interval: int = 25):
     return replace(DEFAULT_CONFIG, memory_ttl=ttl, memory_prune_interval=interval)
 
 
+def test_the_agent_forgets_as_it_goes():
+    """The quick version: sweeps happen and memory does not simply accumulate."""
+    stats = run_ticks(2000, 11, _decaying())
+    assert stats.pruned_tiles > 0
+    assert stats.memory_peak < 60_000
+
+
+@pytest.mark.slow
 def test_decay_bounds_memory_over_a_long_run():
     """The belief dict tracks recent experience, not lifetime experience.
 
-    Asserted as a plateau rather than as a ratio at one length: the peak has
-    to stop growing as the run gets longer, which is the actual property.
-    Comparing the two at a single short horizon passes or fails on how far the
-    agent happened to wander before the first sweep.
+    Asserted as a plateau rather than a ratio at one horizon: the peak has to
+    stop growing as the run gets longer, which is the actual property.
+
+    Slow, and needs a long run, because the agent picks up gear. "Of the long
+    mind" adds two thousand ticks to its effective memory, so a configured TTL
+    of 150 is not the TTL it ends up running on, and the plateau takes several
+    thousand ticks to establish. Measured: the peak sits at the same value at
+    6k, 12k and 18k ticks while the pruned count climbs past 140,000.
     """
     decaying = _decaying()
-    short = run_ticks(1500, 11, decaying)
-    long = run_ticks(3000, 11, decaying)
+    short = run_ticks(6000, 11, decaying)
+    long = run_ticks(12000, 11, decaying)
 
     assert short.pruned_tiles > 0
     assert long.pruned_tiles > short.pruned_tiles, "it keeps forgetting"
-    assert long.memory_peak <= short.memory_peak * 1.1, (
+    assert long.memory_peak <= short.memory_peak * 1.05, (
         "twice the run should not mean a bigger high-water mark: "
         f"{short.memory_peak} -> {long.memory_peak}"
     )
@@ -68,8 +82,8 @@ def test_without_decay_memory_just_grows():
     from dataclasses import replace
 
     forever = replace(DEFAULT_CONFIG, memory_ttl=10**9, memory_prune_interval=25)
-    short = run_ticks(1500, 11, forever)
-    long = run_ticks(3000, 11, forever)
+    short = run_ticks(1000, 11, forever)
+    long = run_ticks(2500, 11, forever)
 
     assert forever.memory_ttl > 0
     assert short.pruned_tiles == 0
