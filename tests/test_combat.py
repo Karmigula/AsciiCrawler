@@ -98,3 +98,32 @@ def test_each_level_costs_more_than_the_last():
         stats.gain_xp(costs[-1], DEFAULT_CONFIG)
     assert costs == sorted(costs)
     assert costs[0] < costs[-1]
+
+
+def test_levelling_never_takes_hit_points_away():
+    """With +max_hp gear the body's own maximum is below the effective one.
+    Healing to the bare-body maximum would make a promotion wound you."""
+    from agent.loadout import derive
+    from sim.affixes import BY_KEY
+    from sim.items import ITEMS
+    from world.populate import Item
+
+    kinds = {k.key: k for k in ITEMS}
+    stats = Stats.starting(DEFAULT_CONFIG)
+    armour = Item(
+        kind=kinds["armor"], x=0, y=0, rarity="rare", affixes=(BY_KEY["giants"],)
+    )
+    derived = derive(stats, {"armor": armour}, DEFAULT_CONFIG)
+    assert derived.max_hp > stats.max_hp
+    stats.hp = derived.max_hp  # full, by the effective ceiling
+
+    stats.gain_xp(stats.xp_to_next(DEFAULT_CONFIG), DEFAULT_CONFIG, ceiling=derived.max_hp)
+
+    assert stats.hp >= derived.max_hp, "levelling up must not wound the agent"
+
+
+def test_levelling_still_heals_a_wounded_agent():
+    stats = Stats.starting(DEFAULT_CONFIG)
+    stats.take(20)
+    stats.gain_xp(stats.xp_to_next(DEFAULT_CONFIG), DEFAULT_CONFIG)
+    assert stats.hp == stats.max_hp

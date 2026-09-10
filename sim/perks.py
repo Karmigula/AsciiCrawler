@@ -38,7 +38,7 @@ def on_kill(derived, stats, config) -> dict:
         result["healed"] = stats.hp - before
     bonus = int(derived.triggers.get("on_kill_xp", 0))
     if bonus > 0:
-        stats.gain_xp(bonus, config)
+        stats.gain_xp(bonus, config, ceiling=derived.max_hp)
         result["bonus_xp"] = bonus
     return result
 

@@ -24,6 +24,10 @@ chunk boundaries.
 import random
 from dataclasses import dataclass, field
 
+MOVED = "moved"
+ATTACKED = "attacked"
+BLOCKED = "blocked"
+
 from agent.fov import compute_fov
 from agent.goals import DIRS_8, ExploreGoal, FleeGoal, LootGoal
 from agent.loadout import best_assignment, derive, effective_config, score
@@ -120,7 +124,16 @@ def _refresh_loadout(agent: AgentState, config: Config) -> Config:
         stats.attack,
         stats.defense,
         stats.max_hp,
-        tuple(sorted((slot, id(item)) for slot, item in agent.equipped.items())),
+        tuple(
+            sorted(
+                # By value, not by id(): CPython reuses addresses, so a
+                # replacement item allocated where a discarded one used to live
+                # would produce an identical signature and leave the derived
+                # bundle describing gear the agent is no longer wearing.
+                (slot, item.kind.key, item.rarity, tuple(a.key for a in item.affixes))
+                for slot, item in agent.equipped.items()
+            )
+        ),
     )
     if signature != agent._loadout_signature or agent.derived is None:
         agent._loadout_signature = signature
@@ -132,15 +145,27 @@ def _refresh_loadout(agent: AgentState, config: Config) -> Config:
 def _pick_up(agent: AgentState, world, config: Config) -> None:
     """Take whatever is underfoot and re-think what to wear."""
     take = getattr(world, "take_item", None)
-    if take is None:
+    peek = getattr(world, "item_at", None)
+    if take is None or peek is None:
         return
+    resting = peek(agent.x, agent.y)
+    if resting is None:
+        return
+    if resting.kind.key == "grave":
+        return  # a headstone is scenery: look, do not lift
     item = take(agent.x, agent.y)
     if item is None:
         return
     agent.pickups += 1
-    if (agent.x, agent.y) in agent.grave_sites:
+    here = (agent.x, agent.y)
+    # Only equippable gear counts as robbing a grave, and only while something
+    # of the agent's is still lying there: otherwise a headstone tile reports a
+    # robbery forever, including for unrelated loot that later falls on it.
+    if here in agent.grave_sites and item.kind.slot is not None:
         agent.graves_robbed += 1
         agent.log.record(agent.tick_count, story.robbed_grave())
+        if peek(agent.x, agent.y) is None:
+            agent.grave_sites.discard(here)  # picked clean
     else:
         agent.log.record(agent.tick_count, story.found(item))
     if item.kind.key == "gold":
@@ -149,8 +174,6 @@ def _pick_up(agent: AgentState, world, config: Config) -> None:
     if item.kind.key == "potion":
         agent.potions += 1
         return
-    if item.kind.key == "grave":
-        return  # a headstone is scenery, not loot
     _reconsider_loadout(agent, item, config)
 
 
@@ -191,10 +214,16 @@ def _act(agent: AgentState, world, rng: random.Random, config: Config) -> None:
     else:
         driver = agent.explorer
     if driver.path:
-        if _try_step(agent, driver.path[0], world, rng, config):
+        outcome = _try_step(agent, driver.path[0], world, rng, config)
+        if outcome == MOVED:
             driver.path.pop(0)
-        else:
+        elif outcome == BLOCKED:
             driver.drop_plan()  # blocked: physics disagrees with belief
+        # ATTACKED: the blow spent the tick but the body did not move, so the
+        # plan still starts from where the agent is standing. Popping here
+        # would leave the next step two tiles away, which the sanity check
+        # then rejects - dropping the plan and, mid-flight, handing the agent
+        # to random wander with a monster adjacent.
         return
     # idle fallback: wander to a believed-passable neighbour, corner-cut safe
     options = [
@@ -220,28 +249,38 @@ def _wander_ok(agent: AgentState, dx: int, dy: int) -> bool:
 
 def _try_step(
     agent: AgentState, nxt: tuple[int, int], world, rng: random.Random, config: Config
-) -> bool:
-    """Move one cell — or, if something is standing there, hit it instead.
+) -> str:
+    """Move one cell - or, if something is standing there, hit it instead.
 
     Bump combat: the agent has no attack command, so a step into an occupied
-    tile spends itself as a blow. The step counts as taken either way, which
-    is what stops a plan from spinning on a blocked tile.
+    tile spends itself as a blow. Returns which of the three happened, because
+    the caller has to tell a blow apart from a step: only a step advances the
+    plan.
+
+    The diagonal rule matches `pathing._neighbors` and `_wander_ok`. Physics
+    has to be at least as strict as the planner, or a plan that legally rounds
+    a corner becomes a step that cuts through it.
     """
     dx, dy = nxt[0] - agent.x, nxt[1] - agent.y
     if max(abs(dx), abs(dy)) != 1:
-        return False
+        return BLOCKED
     if not world.tile_at(nxt[0], nxt[1]).passable:
-        return False
+        return BLOCKED
+    if dx and dy and not (
+        world.tile_at(agent.x + dx, agent.y).passable
+        and world.tile_at(agent.x, agent.y + dy).passable
+    ):
+        return BLOCKED  # no cutting corners past a wall
     entity_at = getattr(world, "entity_at", None)
     monster = None if entity_at is None else entity_at(nxt[0], nxt[1])
     if monster is not None:
         agent_hits_monster(agent.stats, monster, rng, config)
         if monster.hp <= 0:
             _kill(agent, monster, world, rng, config)
-        return True
+        return ATTACKED
     agent.x, agent.y = nxt
     _spring_trap(agent, world, config)
-    return True
+    return MOVED
 
 
 def _spring_trap(agent: AgentState, world, config: Config) -> None:
@@ -285,7 +324,8 @@ def _kill(agent: AgentState, monster, world, rng: random.Random, config: Config)
     agent.kills += 1
     agent.log.record(agent.tick_count, story.killed(monster))
     before = agent.stats.level
-    agent.stats.gain_xp(xp_for(monster, config), config)
+    ceiling = agent.derived.max_hp if agent.derived is not None else None
+    agent.stats.gain_xp(xp_for(monster, config), config, ceiling=ceiling)
     if agent.stats.level > before:
         agent.log.record(agent.tick_count, story.levelled(agent.stats.level))
     if agent.derived is not None:
@@ -352,12 +392,18 @@ def _observe(agent: AgentState, world, config: Config) -> None:
         [world.tile_at(origin_x + lx, origin_y + ly) for lx in range(2 * radius + 1)]
         for ly in range(2 * radius + 1)
     ]
-    visible = compute_fov(window, (radius, radius), radius)
-    visible |= _lava_glow(window, radius, config)
+    seen = compute_fov(window, (radius, radius), radius)
+    # Lava lights terrain through walls, deliberately. It must not also reveal
+    # what is standing in the light: entity sightings feed the threat field,
+    # and the agent should not flee a monster it cannot see through rock.
+    visible = seen | _lava_glow(window, radius, config)
     observation = {
         (origin_x + lx, origin_y + ly): window[ly][lx] for lx, ly in visible
     }
-    entities, items = _things_seen(world, observation)
+    in_sight = {
+        (origin_x + lx, origin_y + ly) for lx, ly in seen
+    }
+    entities, items = _things_seen(world, in_sight)
     agent.memory.observe(observation, agent.tick_count, entities, items)
 
 
@@ -441,9 +487,12 @@ def _monsters_act(agent: AgentState, world, rng: random.Random, config: Config) 
     """Give the active monsters their turn. Worlds without them just skip it."""
     if not agent.active_entities or not hasattr(world, "move_entity"):
         return
-    agent.damage_taken += take_turns(
+    damage, reflected_kills = take_turns(
         agent, agent.active_entities, world, rng, config, agent.tick_count
     )
+    agent.damage_taken += damage
+    for monster in reflected_kills:
+        _kill(agent, monster, world, rng, config)
 
 
 def _think(agent: AgentState, rng: random.Random, config: Config) -> None:

@@ -38,12 +38,14 @@ def take_turns(
 ) -> int:
     """Move or attack with every active monster that is due to act, in place.
 
-    Returns the total damage dealt to the agent. Iteration order is sorted by
+    Returns (damage dealt to the agent, monsters killed by reflected damage).
+    Iteration order is sorted by
     position, never dict order: the active list arrives in chunk-generation
     order, which depends on the agent's route.
     """
     agent_pos = (agent.x, agent.y)
     damage = 0
+    reflected_kills: list = []
     for monster in sorted(active, key=lambda m: (m.y, m.x)):
         if monster.last_moved_tick == tick:
             continue
@@ -61,12 +63,15 @@ def take_turns(
                 on_hit_taken(derived, monster, landed)
                 if monster.hp <= 0:
                     # Thorns can kill: a rat that keeps biting armour it cannot
-                    # hurt eventually finishes itself off.
-                    world.remove_entity(monster)
-                    agent.kills += 1
+                    # hurt eventually finishes itself off. Reported rather than
+                    # removed here, so the caller can put it through the same
+                    # death path as a kill by hand - otherwise a thorned build
+                    # shows kills climbing while xp stalls and corpses leave
+                    # nothing, which reads as a levelling bug.
+                    reflected_kills.append(monster)
             continue
         _step(monster, target, agent_pos, world)
-    return damage
+    return damage, reflected_kills
 
 
 def _choose_step(monster, agent_pos: Position, rng: random.Random, config: Config):

@@ -48,6 +48,7 @@ class FakeAgent:
     def __init__(self, pos, config=DEFAULT_CONFIG) -> None:
         self.x, self.y = pos
         self.stats = Stats.starting(config)
+        self.derived = None
 
 
 def _turn(world, agent_pos, tick=1, seed=1, config=DEFAULT_CONFIG, agent=None):
@@ -122,7 +123,7 @@ def test_a_monster_bumping_the_agent_attacks_instead_of_moving():
     monster = _monster(10, 10)
     world = TinyWorld([monster])
     agent = FakeAgent((11, 10))
-    damage = _turn(world, (11, 10), agent=agent)
+    damage, _ = _turn(world, (11, 10), agent=agent)
     assert (monster.x, monster.y) == (10, 10)  # the blow costs the step
     assert damage > 0
     assert agent.stats.hp == agent.stats.max_hp - damage
@@ -149,3 +150,42 @@ def test_turn_order_does_not_depend_on_the_order_handed_in():
 
     forward = [(10, 10), (11, 11), (12, 10)]
     assert run(forward) == run(list(reversed(forward)))
+
+
+def test_take_turns_reports_a_monster_its_own_blow_killed():
+    """Thorns can kill; the caller has to hear about it to pay for the corpse."""
+    from agent.loadout import derive
+    from sim.affixes import BY_KEY
+    from sim.items import ITEMS
+    from world.populate import Item
+
+    kinds = {k.key: k for k in ITEMS}
+    monster = _monster(11, 10, "r")
+    monster.hp = 1
+    world = TinyWorld([monster])
+    agent = FakeAgent((10, 10))
+    agent.derived = derive(
+        agent.stats,
+        {
+            "armor": Item(
+                kind=kinds["armor"], x=0, y=0, rarity="rare", affixes=(BY_KEY["thorned"],)
+            )
+        },
+        DEFAULT_CONFIG,
+    )
+    _, reflected = take_turns(
+        agent, list(world.monsters), world, random.Random(1), DEFAULT_CONFIG, 1
+    )
+    assert reflected == [monster]
+    assert monster in world.monsters, "removal is the caller's job, not the AI's"
+
+
+def test_no_thorns_means_nothing_to_report():
+    monster = _monster(11, 10, "r")
+    monster.hp = 1
+    world = TinyWorld([monster])
+    agent = FakeAgent((10, 10))
+    _, reflected = take_turns(
+        agent, list(world.monsters), world, random.Random(1), DEFAULT_CONFIG, 1
+    )
+    assert reflected == []

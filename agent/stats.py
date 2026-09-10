@@ -48,12 +48,17 @@ class Stats:
         """Total xp required to reach the level after this one."""
         return round(config.xp_level_base * config.xp_level_growth ** (self.level - 1))
 
-    def gain_xp(self, amount: int, config: Config) -> int:
+    def gain_xp(self, amount: int, config: Config, ceiling: int | None = None) -> int:
         """Bank xp and level up as many times as it pays for. Returns levels gained.
 
-        Levelling heals to the new maximum: it is the only healing in the game
-        this phase, which makes a level-up the thing that saves the agent's
-        life rather than merely a bigger number.
+        Levelling heals to the new maximum: it is the only healing in the game,
+        which makes a level-up the thing that saves the agent's life rather
+        than merely a bigger number.
+
+        `ceiling` is the *effective* maximum once gear is folded in, which is
+        higher than `max_hp` whenever a +max_hp affix is worn. Without it a
+        level-up would heal to the bare-body maximum and so take hit points
+        away from an agent in good armour - a promotion that wounds you.
         """
         self.xp += max(0, amount)
         levels = 0
@@ -62,6 +67,6 @@ class Stats:
             self.level += 1
             self.max_hp += config.level_hp_gain
             self.attack += config.level_attack_gain
-            self.hp = self.max_hp
+            self.hp = max(self.hp, self.max_hp if ceiling is None else max(self.max_hp, ceiling))
             levels += 1
         return levels

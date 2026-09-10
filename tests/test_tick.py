@@ -1,6 +1,7 @@
 import random
 
 from config import DEFAULT_CONFIG
+from agent.stats import Stats
 from sim.tick import AgentState, tick
 from world.tiles import Tile
 
@@ -659,3 +660,184 @@ def test_the_chronicle_fills_up_as_things_happen():
     agent.explorer.path = [(21, 20)]
     tick(agent, world, random.Random(1), DEFAULT_CONFIG)
     assert any("rat" in text for _, text in agent.log.recent())
+
+
+def test_a_grave_is_left_standing_where_it_was_put():
+    """Walking over a headstone must not quietly delete the death marker."""
+    from sim.items import GRAVE
+    from world.populate import Item
+
+    grave = Item(kind=GRAVE, x=21, y=20)
+    world = PopulatedWorld(_open_field(), items=[grave])
+    agent = AgentState(x=20, y=20)
+    _walk_onto(agent, world, DEFAULT_CONFIG, (21, 20))
+    assert grave in world.items
+    assert agent.pickups == 0
+
+
+def test_only_gear_counts_as_robbing_a_grave():
+    """Gold falling on a headstone tile is not the agent reclaiming itself."""
+    world = PopulatedWorld(_open_field(), items=[_loot("gold", 21, 20)])
+    agent = AgentState(x=20, y=20)
+    agent.grave_sites.add((21, 20))
+    _walk_onto(agent, world, DEFAULT_CONFIG, (21, 20))
+    assert agent.graves_robbed == 0
+
+
+def test_a_grave_site_is_forgotten_once_it_is_picked_clean():
+    """Otherwise the tile reports a robbery forever and the set never shrinks."""
+    world = PopulatedWorld(_open_field(), items=[_loot("weapon", 21, 20, "cruel")])
+    agent = AgentState(x=20, y=20)
+    agent.grave_sites.add((21, 20))
+    _walk_onto(agent, world, DEFAULT_CONFIG, (21, 20))
+    assert agent.graves_robbed == 1
+    assert (21, 20) not in agent.grave_sites
+
+
+def test_a_bump_does_not_advance_the_plan():
+    """The blow spends the tick but the body has not moved, so the plan still
+    starts where the agent is standing. Popping it would leave the next step
+    two tiles away, which the sanity check then rejects - costing a tick, and
+    mid-flight handing the agent to random wander with a monster adjacent.
+
+    Driven through _act: a whole tick would re-decide the plan through the
+    brain, which is correct behaviour but overwrites the fixture.
+    """
+    from dataclasses import replace
+
+    from sim.tick import _act
+
+    config = replace(DEFAULT_CONFIG, damage_variance=0)
+    goblin = _monster(21, 20, "g")  # survives one blow
+    world = PopulatedWorld(_open_field(), [goblin])
+    agent = AgentState(x=20, y=20)
+    agent.stats = Stats.starting(config)
+    agent.explorer.path = [(21, 20), (22, 20)]
+    before = goblin.hp
+
+    _act(agent, world, random.Random(1), config)
+
+    assert (agent.x, agent.y) == (20, 20), "a blow is not a step"
+    assert goblin.hp < before, "the blow landed"
+    assert agent.explorer.path == [(21, 20), (22, 20)], "the plan is untouched"
+
+
+def test_a_real_step_does_advance_the_plan():
+    from sim.tick import _act
+
+    world = PopulatedWorld(_open_field())
+    agent = AgentState(x=20, y=20)
+    agent.stats = Stats.starting(DEFAULT_CONFIG)
+    agent.explorer.path = [(21, 20), (22, 20)]
+
+    _act(agent, world, random.Random(1), DEFAULT_CONFIG)
+
+    assert (agent.x, agent.y) == (21, 20)
+    assert agent.explorer.path == [(22, 20)]
+
+
+def test_a_blocked_step_drops_the_plan():
+    from sim.tick import _act
+
+    field = _open_field()
+    field[20][21] = Tile.WALL
+    agent = AgentState(x=20, y=20)
+    agent.stats = Stats.starting(DEFAULT_CONFIG)
+    agent.explorer.path = [(21, 20), (22, 20)]
+
+    _act(agent, PopulatedWorld(field), random.Random(1), DEFAULT_CONFIG)
+
+    assert (agent.x, agent.y) == (20, 20)
+    assert agent.explorer.path == []
+
+
+def test_physics_refuses_to_cut_a_corner_the_planner_would_not():
+    """_try_step has to be at least as strict as pathing, or a legal plan
+    becomes an illegal move."""
+    from sim.tick import _act
+
+    field = _open_field()
+    field[20][21] = Tile.WALL
+    field[19][20] = Tile.WALL
+    agent = AgentState(x=20, y=20)
+    agent.stats = Stats.starting(DEFAULT_CONFIG)
+    agent.explorer.path = [(21, 19)]  # diagonal squeezed between two walls
+
+    _act(agent, PopulatedWorld(field), random.Random(1), DEFAULT_CONFIG)
+
+    assert (agent.x, agent.y) == (20, 20)
+
+
+def test_lava_light_does_not_reveal_what_stands_in_it():
+    """The glow is for terrain. Entity sightings feed the threat field, and the
+    agent must not flee a monster it cannot see through solid rock."""
+    field = _open_field()
+    for y in range(10, 40):
+        field[y][24] = Tile.WALL
+    world = LavaPopulatedWorld(field, lava={(26, 20)}, monsters=[_monster(27, 20, "D")])
+    agent = AgentState(x=20, y=20)
+    tick(agent, world, random.Random(1), DEFAULT_CONFIG)
+    assert (26, 20) in agent.memory  # terrain is lit
+    assert agent.memory.snapshot((27, 20))[0] is None  # the dragon is not
+
+
+class LavaPopulatedWorld(PopulatedWorld):
+    """Both lava and entities, to check the glow does not leak sightings."""
+
+    def __init__(self, tiles, lava=(), monsters=None, items=None) -> None:
+        super().__init__(tiles, monsters=monsters, items=items)
+        self.lava = set(lava)
+
+    def tile_at(self, x, y):
+        if (x, y) in self.lava:
+            return Tile.LAVA
+        return super().tile_at(x, y)
+
+
+def test_reflected_kills_are_paid_out_like_any_other_kill():
+    """Otherwise a thorned build shows kills climbing while xp stalls and
+    corpses leave nothing, which reads to a watcher as a levelling bug.
+
+    Driven through _monsters_act rather than a whole run: an agent that can
+    walk simply retreats, and a monster moving at the same speed never lands a
+    second blow, so a full-tick scenario cannot reach the reflect path at all.
+    """
+    from dataclasses import replace
+
+    from sim.tick import _monsters_act
+
+    config = replace(DEFAULT_CONFIG, damage_variance=0, monster_drop_chance=1.0)
+    rat = _monster(21, 20, "r")
+    rat.hp = 1  # one reflected point finishes it
+    world = PopulatedWorld(_open_field(), [rat])
+    agent = AgentState(x=20, y=20)
+    tick(agent, world, random.Random(1), config)  # builds stats and derived
+    agent.x, agent.y = 20, 20
+    agent.equipped["armor"] = _loot("armor", 0, 0, "thorned")
+    tick(agent, world, random.Random(1), config)  # fold the armour in
+    agent.x, agent.y = 20, 20
+    rat.x, rat.y = 21, 20
+    rat.hp = 1
+    rat.last_moved_tick = -1
+    agent.active_entities = [rat]
+    agent.stats.xp = 0
+    before_kills = agent.kills
+
+    _monsters_act(agent, world, random.Random(1), config)
+
+    assert rat not in world.monsters, "thorns should have finished it"
+    assert agent.kills == before_kills + 1
+    assert agent.stats.xp > 0 or agent.stats.level > 1
+    assert world.dropped, "a corpse killed by thorns still drops loot"
+    assert any("rat" in text for _, text in agent.log.recent())
+
+
+def test_swapping_to_different_gear_refreshes_the_derived_bundle():
+    """The signature has to be by value: identity can be recycled."""
+    world = PopulatedWorld(_open_field())
+    agent = AgentState(x=20, y=20)
+    tick(agent, world, random.Random(1), DEFAULT_CONFIG)
+    plain = agent.derived.attack
+    agent.equipped["weapon"] = _loot("weapon", 0, 0, "cruel")
+    tick(agent, world, random.Random(1), DEFAULT_CONFIG)
+    assert agent.derived.attack > plain
