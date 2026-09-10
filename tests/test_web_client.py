@@ -92,3 +92,76 @@ def test_the_page_is_valid_javascript():
         timeout=120,
     )
     assert done.returncode == 0, done.stderr
+
+
+FIT = """
+import fs from "node:fs";
+const src = fs.readFileSync(process.argv[2], "utf8");
+const body = src.slice(src.indexOf("const CELL_RATIO"), src.indexOf("if (typeof module"));
+const fitCells = new Function(body + "; return fitCells;")();
+const cases = JSON.parse(process.argv[3]);
+console.log(JSON.stringify(cases.map(([w, h, cols, rows]) => fitCells(w, h, cols, rows))));
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_the_grid_is_scaled_to_fit_the_window_it_is_drawn_in(tmp_path):
+    """The page sized cells off the width alone and ran off the bottom.
+
+    On a wide window that is not a small error: at 104 columns the grid came
+    out around three quarters as tall as it was wide, so a maximised browser
+    showed the top two thirds of the map and scrolled for the rest. Both axes
+    have to be considered, and the smaller one has to win.
+    """
+    cases = [
+        (1712, 760, 104, 36),  # the window this was reported from
+        (1560, 880, 104, 36),  # 1080p, maximised
+        (2200, 1250, 104, 36),  # 1440p
+        (3000, 700, 104, 36),  # ultrawide and short
+        (900, 480, 104, 36),  # a small laptop
+        (600, 1000, 104, 36),  # narrow and tall
+        (380, 500, 104, 36),  # a phone
+        (200, 200, 104, 36),  # absurd, but it must not crash or go negative
+    ]
+    script = tmp_path / "fit.mjs"
+    script.write_text(FIT, encoding="utf-8")
+
+    done = subprocess.run(
+        ["node", str(script), "web/static/app.js", json.dumps(cases)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert done.returncode == 0, done.stderr
+    sizes = json.loads(done.stdout)
+
+    for (avail_w, avail_h, cols, rows), size in zip(cases, sizes):
+        width = size["cellW"] * cols
+        height = size["cellH"] * rows
+        assert size["cellW"] >= 3, "cells must stay big enough to see"
+        if avail_w >= 380 and avail_h >= 300:
+            assert width <= avail_w, f"{width}px of grid in {avail_w}px of window"
+            assert height <= avail_h, f"{height}px of grid in {avail_h}px of window"
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_a_wider_window_gets_bigger_cells_not_a_cropped_map(tmp_path):
+    """Growing the window must scale the same grid up, never show more of it.
+
+    Everyone watches one shared frame, so the number of cells is fixed by the
+    server; the page's only move is to draw them larger.
+    """
+    script = tmp_path / "fit.mjs"
+    script.write_text(FIT, encoding="utf-8")
+    cases = [(800, 500, 104, 36), (1600, 1000, 104, 36)]
+
+    done = subprocess.run(
+        ["node", str(script), "web/static/app.js", json.dumps(cases)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    small, large = json.loads(done.stdout)
+
+    assert large["cellW"] > small["cellW"]
+    assert large["cellH"] > small["cellH"]

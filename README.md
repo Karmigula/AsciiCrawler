@@ -51,11 +51,18 @@ nothing.
 
 | variable | | default |
 | --- | --- | --: |
-| `CRAWLER_COLS` / `CRAWLER_ROWS` | size of the window | 88 × 40 |
+| `CRAWLER_COLS` / `CRAWLER_ROWS` | size of the window | 104 × 36 |
 | `CRAWLER_FPS` | frames a second to aim for | 8 |
 | `CRAWLER_WORLD_TICKS` | roll a fresh world after this many ticks | 40,000 |
 | `CRAWLER_SEED` | which world to start on | config default |
+| `CRAWLER_HUD_CHARS` | width the side panel is clipped to | 46 |
 | `CRAWLER_HALL` | `1` to write the hall of fame to disk | off |
+
+The page scales the grid to whatever room the browser gives it, so the same
+frame fits a phone and a 1440p window. Everyone shares one frame, so the
+*number* of cells is fixed by the server and the page can only draw them
+larger or smaller — 104 × 36 draws at roughly 16:9, which fills a maximised
+window rather than leaving bands down both sides.
 
 A small host will not always hit the frame rate. That is fine — falling
 behind makes the tank run slower, not wrong.

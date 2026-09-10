@@ -20,6 +20,8 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from dataclasses import replace
+
 from config import DEFAULT_CONFIG
 from render.hud import chronicle_lines, hud_lines
 from sim.session import Session
@@ -35,18 +37,23 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
-# Sized to look right rather than to fit a particular host. A frame is a few
-# tens of milliseconds of Python, so a small instance will not always hit the
-# target rate - and that is fine: falling behind makes the tank run slower,
-# not wrong. Every knob is an environment variable, so a host that struggles
-# can be dialled down without a deploy.
-COLS = _env_int("CRAWLER_COLS", 88)
-ROWS = _env_int("CRAWLER_ROWS", 40)
+# Everyone shares one frame, so the window cannot be tailored to each browser
+# and its shape is a compromise. A character cell is about 1.6 times taller
+# than it is wide, so 104x36 draws at roughly 16:9 and fills a maximised
+# window instead of leaving bands down both sides.
+#
+# A frame is a few tens of milliseconds of Python, so a small instance will
+# not always hit the target rate - and that is fine: falling behind makes the
+# tank run slower, not wrong. Every knob is an environment variable, so a host
+# that struggles can be dialled down without a deploy.
+COLS = _env_int("CRAWLER_COLS", 104)
+ROWS = _env_int("CRAWLER_ROWS", 36)
 FPS = _env_int("CRAWLER_FPS", 8)
 TICKS_PER_FRAME = _env_int("CRAWLER_TICKS_PER_FRAME", 1)
 # Chunks are never discarded, so a world that runs for a month is a slow leak.
 # Rotating also keeps the tank worth watching.
 WORLD_TICKS = _env_int("CRAWLER_WORLD_TICKS", 40_000)
+HUD_CHARS = _env_int("CRAWLER_HUD_CHARS", 46)
 
 
 class Viewers:
@@ -87,14 +94,17 @@ def build_payload(session: Session, viewers: int) -> str:
     config = session.config
     agent = session.agent
     here = session.world.biome_at(agent.x, agent.y)
+    # The desktop clips HUD lines to the width of its side panel. A browser
+    # panel is wider, and "found a amulet of the lo..." helps nobody.
+    wide = replace(config, hud_max_chars=HUD_CHARS)
     frame = serialize(
         session.world,
         agent,
         config,
         COLS,
         ROWS,
-        hud=hud_lines(agent, len(session.world), config, biome=(here.key, here.label)),
-        log=chronicle_lines(agent, config),
+        hud=hud_lines(agent, len(session.world), wide, biome=(here.key, here.label)),
+        log=chronicle_lines(agent, wide),
         viewers=viewers,
     )
     frame["seed"] = session.seed

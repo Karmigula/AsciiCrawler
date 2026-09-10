@@ -15,9 +15,9 @@ services:
       # The window and the frame rate. Lower them if the instance cannot keep
       # up - a slow host makes the tank run slower, which is a look, not a bug.
       - key: CRAWLER_COLS
-        value: "88"
+        value: "104"
       - key: CRAWLER_ROWS
-        value: "40"
+        value: "36"
       - key: CRAWLER_FPS
         value: "8"
       # Roll a fresh world after this many ticks. Chunks are never discarded,

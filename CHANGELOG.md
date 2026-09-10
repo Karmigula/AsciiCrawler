@@ -14,6 +14,11 @@ built by the same code the desktop window uses, which is now `render/frame.py`
 — pulled out of `main.py` so that a headless server can build a picture
 without pygame anywhere in the process.
 
+The page scales the map to the window it is drawn in. The first version sized
+cells off the available width alone, so on a maximised browser the grid came
+out taller than the screen and the bottom third of the dungeon was below the
+fold. Both axes are considered now, and the window is shaped for widescreen.
+
 Deploy with the included `render.yaml` (Render blueprint) or `Procfile`, and
 run it locally with `run-web.bat`.
 
