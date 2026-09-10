@@ -60,6 +60,11 @@ Nobody plays it.
 - **Screenshots** with `p`.
 - **`run.bat`** — double-click and it starts.
 
+### Settings
+
+- **A settings screen** on the title menu: soak workers, starting speed, how
+  strongly the biome tints the ground, and moss on or off.
+
 ### Under the hood
 
 - 368 tests, plus a 100,000-tick soak run that checks the thing can be left
@@ -80,6 +85,9 @@ Things found by profiling, by a code review, and by watching long runs:
 - The agent could stop exploring entirely and stand still for the rest of a
   run — twice, for two different reasons. Both fixed, both now watched for.
 - A monster killed by spiked armour paid no experience and dropped nothing.
-- Long runs got slower and slower as the agent remembered more; roughly twice
-  as fast now, and steady instead of degrading.
+- Long runs got slower and slower as the agent remembered more. The agent now
+  keeps track of where its frontier is instead of re-deriving it from scratch
+  every time it thinks, which was the largest single cost in a long run.
+- **Soaking many worlds at once**, one per core: 8 worlds took 70 seconds on
+  one worker and 15 on eight, with identical results.
 - Long item names ran off the edge of the screen. They wrap.

@@ -26,6 +26,7 @@ the same simulation run faster and not a different one.
 """
 
 import random
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -35,11 +36,21 @@ from agent.fov import compute_fov
 from config import DEFAULT_CONFIG, Config
 from render.fog import fog_grid
 from render.hud import chronicle_lines, equipment_lines, help_lines, hud_lines
-from render.menu import ENTRIES, TITLE_ROWS, menu_lines, move_selection
+from render.menu import (
+    ENTRIES,
+    TITLE_ROWS,
+    adjust,
+    apply_settings,
+    default_settings,
+    menu_lines,
+    move_selection,
+    settings_lines,
+)
 from render.flourish import speckle_moss
 from render.palette import background_grid, item_color, monster_color, terrain_color
 from render.overlays import OVERLAY_NAMES, apply_overlay
 from render.screen import Screen
+from sim.soak import available_workers
 from sim.tick import AgentState, tick
 from world.chunks import ChunkStore
 from world.tiles import Tile
@@ -79,11 +90,44 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
     show_hud = True
     running = True
     in_menu = True
+    in_settings = False
     selected = 0
+    setting_selected = 0
+    settings = default_settings(config, available_workers())
 
     while running:
         dt = clock.tick(config.max_fps) / 1000.0
         accumulator = min(accumulator + dt, config.max_frame_seconds)
+
+        if in_settings:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.VIDEORESIZE:
+                    screen.resize(event.size)
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_F11:
+                        screen.toggle_fullscreen()
+                    elif event.key == pygame.K_F10:
+                        screen.toggle_borderless()
+                    elif event.key == pygame.K_ESCAPE:
+                        in_settings = False
+                    elif event.key in (pygame.K_UP, pygame.K_w):
+                        setting_selected = (setting_selected - 1) % len(settings)
+                    elif event.key in (pygame.K_DOWN, pygame.K_s):
+                        setting_selected = (setting_selected + 1) % len(settings)
+                    elif event.key in (pygame.K_LEFT, pygame.K_a):
+                        adjust(settings, setting_selected, -1)
+                        config = apply_settings(settings, config)
+                    elif event.key in (pygame.K_RIGHT, pygame.K_d):
+                        adjust(settings, setting_selected, 1)
+                        config = apply_settings(settings, config)
+                        speed_index = _speed_index_for(settings, config)
+            screen.draw_centered(
+                settings_lines(settings, setting_selected, config), big_lines=5
+            )
+            screen.present()
+            continue
 
         if in_menu:
             for event in pygame.event.get():
@@ -106,6 +150,8 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
                         choice = ENTRIES[selected][0]
                         if choice == "quit":
                             running = False
+                        elif choice == "settings":
+                            in_settings = True
                         else:
                             if choice == "new world" or agent is None:
                                 if choice == "new world" and agent is not None:
@@ -217,6 +263,15 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
     screen.close()
 
 
+def _speed_index_for(settings, config: Config) -> int:
+    """Which speed step the settings screen currently names."""
+    for setting in settings:
+        if setting.key == "speed":
+            steps = list(config.speed_steps)
+            return steps.index(setting.value) if setting.value in steps else 0
+    return 0
+
+
 def _thing_color(glyph: str, config: Config):
     """Whatever is standing on a tile: monsters by threat, items by kind."""
     if glyph in config.monster_colors:
@@ -246,4 +301,13 @@ def _fov_global(world: ChunkStore, agent: AgentState, config: Config) -> set[tup
 
 
 if __name__ == "__main__":
-    main()
+    if "--soak" in sys.argv:
+        # Delegated rather than duplicated, and it says where the real entry
+        # point is: worker processes re-import this module under Windows
+        # spawn, so soaking through the game costs a pygame startup per worker.
+        print("tip: python -m sim.soak <ticks> <worlds> <workers> avoids loading pygame")
+        from sim.soak import main as soak_main
+
+        soak_main(sys.argv[sys.argv.index("--soak") + 1 :])
+    else:
+        main()

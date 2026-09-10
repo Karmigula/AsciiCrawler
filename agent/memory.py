@@ -25,6 +25,10 @@ from world.tiles import Tile
 
 Position = tuple[int, int]
 
+# The eight neighbours, spelled out here rather than imported from pathing:
+# pathing imports this module, and a cycle to share a constant is a poor trade.
+_NEIGHBOURS = ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1))
+
 
 @dataclass
 class MemoryRecord:
@@ -51,6 +55,13 @@ class Memory:
         # what the agent has recently seen, not what it remembers.
         self._entity_coords: set[Position] = set()
         self._item_coords: set[Position] = set()
+        # Believed-passable tiles with at least one unknown neighbour, kept up
+        # to date rather than searched for. Recomputing it meant walking every
+        # remembered tile on every decision, which is fine at a thousand tiles
+        # and the most expensive thing in the run at forty thousand. A tile's
+        # membership can only change when a neighbour becomes known or is
+        # forgotten, so an addition or a removal refreshes nine tiles.
+        self._frontier: set[Position] = set()
 
     def observe(
         self,
@@ -71,6 +82,8 @@ class Memory:
         entities = entities or {}
         items = items or {}
         fresh = 0
+        new_tiles: list[Position] = []
+        changed: list[Position] = []
         for coord, terrain in observation.items():
             record = self._records.get(coord)
             if record is None:
@@ -81,7 +94,16 @@ class Memory:
                     last_item=items.get(coord),
                 )
                 fresh += 1
+                new_tiles.append(coord)
             elif snapshot_coords is None or coord in snapshot_coords:
+                if record.terrain_belief is not terrain:
+                    # Terrain is static in this world, so this is rare - but a
+                    # belief that changes changes the tile's own frontier
+                    # status, and an invariant that only holds while nothing
+                    # surprising happens is not an invariant. Only the tile
+                    # itself: its neighbours care whether it is *known*, which
+                    # has not changed.
+                    changed.append(coord)
                 record.last_seen_tick = tick
                 record.terrain_belief = terrain
                 record.last_entity_snapshot = entities.get(coord)
@@ -96,9 +118,41 @@ class Memory:
                 record.terrain_belief = terrain
                 continue
             self._index(coord, entities.get(coord), items.get(coord))
+        for coord in new_tiles:
+            self._refresh_around(coord)
+        for coord in changed:
+            self._refresh_frontier(coord)
         if fresh:
             self.generation += 1
         return fresh
+
+    def _is_frontier(self, coord: Position) -> bool:
+        record = self._records.get(coord)
+        if record is None or not record.terrain_belief.passable:
+            return False
+        x, y = coord
+        for dx, dy in _NEIGHBOURS:
+            if (x + dx, y + dy) not in self._records:
+                return True
+        return False
+
+    def _refresh_frontier(self, coord: Position) -> None:
+        """Bring one tile's frontier membership back in line with the records."""
+        if self._is_frontier(coord):
+            self._frontier.add(coord)
+        else:
+            self._frontier.discard(coord)
+
+    def _refresh_around(self, coord: Position) -> None:
+        """Refresh a tile and its neighbours, after it appeared or vanished."""
+        self._refresh_frontier(coord)
+        x, y = coord
+        for dx, dy in _NEIGHBOURS:
+            self._refresh_frontier((x + dx, y + dy))
+
+    def frontier(self) -> set:
+        """Tiles believed passable that still border something unseen."""
+        return self._frontier
 
     def _index(self, coord: Position, entity: str | None, item: str | None) -> None:
         """Keep the snapshot indexes in step with a record that just changed."""
@@ -136,6 +190,10 @@ class Memory:
             del self._records[coord]
             self._entity_coords.discard(coord)
             self._item_coords.discard(coord)
+        for coord in expired:
+            # After every removal, not during: a tile whose neighbour is also
+            # about to go would otherwise be judged against a half-pruned map.
+            self._refresh_around(coord)
         if expired:
             self.generation += 1
         return len(expired)
@@ -154,6 +212,7 @@ class Memory:
             record = MemoryRecord(terrain_belief=terrain, last_seen_tick=tick)
             self._records[coord] = record
             self.generation += 1
+            self._refresh_around(coord)
         record.known_trap = True
 
     def believes_hazard(self, coord: Position) -> bool:

@@ -113,6 +113,7 @@ class Config:
     )
 
     # title screen
+    soak_workers: int = 0  # 0 = one per core; used by the parallel soak runner
     menu_title_font_size: int = 22  # the block letters get their own size
     menu_title_color: tuple[int, int, int] = (214, 170, 92)
     menu_text_color: tuple[int, int, int] = (206, 206, 216)
@@ -154,6 +155,11 @@ class Config:
     # so the search runs to exhaustion over everything the agent remembers.
     # Anything beyond the cap scores about zero anyway: value is gain/(1+cost).
     path_expansion_cap: int = 3000
+    # Stop a plan sweep once this many candidates have been reached. Dijkstra
+    # settles them nearest first and score is gain/(1 + cost), so the ones it
+    # stops short of were never going to win - and waiting for all of them
+    # meant one unreachable candidate cost a full-cap sweep every time.
+    plan_settle_target: int = 12
     explore_hysteresis_bonus: float = 0.1
     explore_noise: float = 0.02
 

@@ -209,3 +209,73 @@ def test_a_tile_actually_seen_still_clears_its_snapshot():
     memory.observe({(5, 5): Tile.FLOOR}, tick=1, entities={(5, 5): "T"})
     memory.observe({(5, 5): Tile.FLOOR}, tick=2, snapshot_coords={(5, 5)})
     assert memory.snapshot((5, 5))[0] is None
+
+
+def _brute_force_frontier(memory):
+    """The definition, computed the slow way, for the incremental set to match."""
+    from agent.memory import _NEIGHBOURS
+
+    found = set()
+    for coord in memory.known():
+        if not memory.believes_passable(coord):
+            continue
+        x, y = coord
+        if any((x + dx, y + dy) not in memory for dx, dy in _NEIGHBOURS):
+            found.add(coord)
+    return found
+
+
+def test_the_maintained_frontier_matches_the_definition():
+    """A maintained set can drift where a recomputed one cannot, and a wrong
+    frontier sends the agent to places it has already seen - or nowhere."""
+    import random
+
+    rng = random.Random(1234)
+    memory = Memory()
+    tick_at = 0
+    for step in range(300):
+        tick_at += 1
+        # A ragged blob of observations, so tiles arrive with unknown
+        # neighbours on every side and in every order.
+        cx, cy = rng.randrange(-20, 20), rng.randrange(-20, 20)
+        observation = {}
+        for dy in range(-2, 3):
+            for dx in range(-2, 3):
+                if rng.random() < 0.7:
+                    coord = (cx + dx, cy + dy)
+                    observation[coord] = (
+                        Tile.FLOOR if rng.random() < 0.75 else Tile.WALL
+                    )
+        memory.observe(observation, tick=tick_at)
+        if step % 25 == 24:
+            memory.prune(tick=tick_at, ttl=rng.randrange(1, 30))
+        assert memory.frontier() == _brute_force_frontier(memory), f"step {step}"
+
+
+def test_forgetting_a_tile_puts_its_neighbours_back_on_the_frontier():
+    """The case that makes decay recycle novelty at all."""
+    memory = Memory()
+    memory.observe(
+        {(x, y): Tile.FLOOR for x in range(-1, 2) for y in range(-1, 2)}, tick=1
+    )
+    memory.observe({(0, 0): Tile.FLOOR}, tick=500)  # keep the middle fresh
+    assert (0, 0) not in memory.frontier(), "fully surrounded by known ground"
+
+    memory.prune(tick=600, ttl=200)  # the ring expires, the middle survives
+
+    assert (0, 0) in memory.frontier(), "its neighbours are unknown again"
+    assert memory.frontier() == _brute_force_frontier(memory)
+
+
+def test_a_wall_is_never_frontier():
+    memory = Memory()
+    memory.observe({(0, 0): Tile.WALL}, tick=1)
+    assert memory.frontier() == set()
+
+
+def test_a_tile_walled_in_on_every_side_is_not_frontier():
+    memory = Memory()
+    observation = {(x, y): Tile.WALL for x in range(-1, 2) for y in range(-1, 2)}
+    observation[(0, 0)] = Tile.FLOOR
+    memory.observe(observation, tick=1)
+    assert (0, 0) not in memory.frontier()

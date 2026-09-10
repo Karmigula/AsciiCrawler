@@ -92,6 +92,7 @@ def distances(
     start: Position,
     targets: Iterable[Position] | None = None,
     max_expansions: int | None = None,
+    stop_after: int | None = None,
 ) -> tuple[Mapping[Position, float], dict[Position, Position]]:
     """Dijkstra from start over believed floors: (cost-so-far, came-from).
 
@@ -108,6 +109,13 @@ def distances(
     unreachable in belief never close, so the sweep then ends the way it
     always did, by exhausting the reachable component.
 
+    `stop_after` ends the sweep once that many targets have settled, rather
+    than waiting for all of them. The caller only needs a handful of reachable
+    candidates to choose between, and Dijkstra settles them nearest first, so
+    the ones it gives up on are the far ones that were going to score near
+    zero anyway. Without it a single unreachable target in the sample means
+    every sweep runs to the expansion cap.
+
     `None` means sweep everything. A collection means stop once satisfied,
     and the empty collection is satisfied immediately.
 
@@ -122,6 +130,8 @@ def distances(
     if not memory.believes_passable(start):
         return {}, {}
     remaining = None if targets is None else set(targets)
+    wanted = len(remaining) if remaining is not None else 0
+    settled_targets = 0
     open_heap: list[tuple[float, int, Position]] = [(0.0, 0, start)]
     cost: dict[Position, float] = {start: 0.0}
     came_from: dict[Position, Position] = {}
@@ -136,8 +146,11 @@ def distances(
         if pos in closed:
             continue
         closed.add(pos)
-        if remaining is not None:
+        if remaining is not None and pos in remaining:
             remaining.discard(pos)
+            settled_targets += 1
+            if stop_after is not None and settled_targets >= stop_after:
+                break
         for nxt, step in _neighbors(memory, pos):
             tentative = g + step
             if nxt in closed or (nxt in cost and cost[nxt] <= tentative):

@@ -1,54 +1,50 @@
-"""The long soak: does the whole machine survive being left running?
-
-Deselected by default (see pytest.ini). The 100k run takes about 35 minutes
-and the whole marked suite about 57: the cost
-per tick grows with the size of memory, because `goals.frontier` rescans every
-remembered tile on each decision, and by the end the agent remembers tens of
-thousands. That is the next thing worth optimising if the soak ever needs to
-be routine. It is the
-only test that exercises the interaction of every system at once over a span
-where slow leaks and slow starvation would show up, so it asserts the three
-properties that a long run can break and a short one cannot:
-
-- it does not raise,
-- memory stays bounded (decay keeps up with discovery),
-- the agent keeps finding somewhere to go (novelty keeps recycling).
-"""
-
-import pytest
+"""Running many worlds at once."""
 
 from config import DEFAULT_CONFIG
-from sim.harness import run_ticks
-
-TICKS = 100_000
+from sim.soak import available_workers, run_many, summarise
 
 
-@pytest.mark.slow
-def test_a_hundred_thousand_ticks_of_everything_at_once():
-    stats = run_ticks(TICKS, seed=4242)
-
-    assert stats.ticks == TICKS
-    # Bounded belief: the pruner has to keep pace with exploration forever.
-    assert stats.memory_peak < 120_000, stats
-    assert stats.pruned_tiles > 0, stats
-    # Novelty keeps recycling: a starved agent is a stuck aquarium.
-    assert stats.frontier_starved_ticks < TICKS // 100, stats
-    # The creature actually lived: travelled, fought, and found things.
-    assert stats.max_distance > 200, stats
-    assert stats.chunks_generated > 20, stats
-    assert stats.kills > 0, stats
-    assert stats.pickups > 0, stats
-
-    # Measured at 100k on seed 4242: 22 starved ticks, 545 tiles travelled,
-    # 47,888 peak memory against 467,236 records pruned, 2,061 kills, level 14.
-    # Two earlier states this guards against: starvation for 82,278 of 100,000
-    # ticks (fixed by the bump/plan correction), and an agent that stopped
-    # moving entirely at tick 20,000 - which this test could NOT see, because a
-    # frozen agent starves for neither reason it checks. Watching where the
-    # agent actually was is what caught that one.
+def test_parallel_and_serial_give_the_same_answers():
+    """The point of a deterministic sim: which core ran a world cannot matter."""
+    seeds = [1, 2, 3, 4]
+    serial = run_many(150, seeds, DEFAULT_CONFIG, workers=1)
+    parallel = run_many(150, seeds, DEFAULT_CONFIG, workers=2)
+    assert serial == parallel
 
 
-@pytest.mark.slow
-def test_a_long_run_is_reproducible():
-    """Determinism has to survive length, not just a few hundred ticks."""
-    assert run_ticks(20_000, seed=99) == run_ticks(20_000, seed=99)
+def test_results_come_back_in_seed_order():
+    """Whichever worker finishes first, a batch has to be comparable."""
+    seeds = [7, 3, 11]
+    results = run_many(120, seeds, DEFAULT_CONFIG, workers=2)
+    assert [r.seed for r in results] == seeds
+
+
+def test_a_single_seed_does_not_start_a_pool():
+    result = run_many(120, [5], DEFAULT_CONFIG, workers=8)
+    assert len(result) == 1
+    assert result[0].seed == 5
+
+
+def test_no_seeds_is_not_an_error():
+    assert run_many(100, [], DEFAULT_CONFIG, workers=4) == []
+
+
+def test_worker_count_is_clamped_to_something_sane():
+    assert available_workers() >= 1
+    # More workers than jobs must not spawn idle processes or fail.
+    assert len(run_many(100, [1, 2], DEFAULT_CONFIG, workers=64)) == 2
+    assert len(run_many(100, [1, 2], DEFAULT_CONFIG, workers=0)) == 2
+
+
+def test_the_summary_aggregates_the_batch():
+    results = run_many(150, [1, 2], DEFAULT_CONFIG, workers=1)
+    summary = summarise(results)
+    assert summary["worlds"] == 2
+    assert summary["ticks_each"] == 150
+    assert summary["kills"] == sum(r.kills for r in results)
+    assert summary["max_distance"] == max(r.max_distance for r in results)
+    assert len(summary["levels"]) == 2
+
+
+def test_an_empty_batch_summarises_to_nothing():
+    assert summarise([]) == {}

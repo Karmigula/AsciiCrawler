@@ -45,14 +45,35 @@ def _decaying(ttl: int = 150, interval: int = 25):
 def test_decay_bounds_memory_over_a_long_run():
     """The belief dict tracks recent experience, not lifetime experience.
 
-    Checked at the peak, not at the end: a final-tick reading could simply
-    have landed just after a sweep.
+    Asserted as a plateau rather than as a ratio at one length: the peak has
+    to stop growing as the run gets longer, which is the actual property.
+    Comparing the two at a single short horizon passes or fails on how far the
+    agent happened to wander before the first sweep.
     """
-    decayed = run_ticks(800, 11, _decaying())
-    forever = run_ticks(800, 11, _decaying(ttl=10**9, interval=25))
-    assert decayed.pruned_tiles > 0
-    assert decayed.memory_peak < forever.memory_peak / 2
-    assert forever.pruned_tiles == 0
+    decaying = _decaying()
+    short = run_ticks(1500, 11, decaying)
+    long = run_ticks(3000, 11, decaying)
+
+    assert short.pruned_tiles > 0
+    assert long.pruned_tiles > short.pruned_tiles, "it keeps forgetting"
+    assert long.memory_peak <= short.memory_peak * 1.1, (
+        "twice the run should not mean a bigger high-water mark: "
+        f"{short.memory_peak} -> {long.memory_peak}"
+    )
+
+
+def test_without_decay_memory_just_grows():
+    """The other half of the claim: the plateau is decay's doing, not the
+    world running out of tiles."""
+    from dataclasses import replace
+
+    forever = replace(DEFAULT_CONFIG, memory_ttl=10**9, memory_prune_interval=25)
+    short = run_ticks(1500, 11, forever)
+    long = run_ticks(3000, 11, forever)
+
+    assert forever.memory_ttl > 0
+    assert short.pruned_tiles == 0
+    assert long.memory_peak > short.memory_peak * 1.5
 
 
 def test_the_agent_keeps_finding_somewhere_to_go():

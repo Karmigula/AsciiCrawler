@@ -10,6 +10,8 @@ silently turns into tofu on a machine without them is a poor first impression,
 and `#` is the same character the walls are drawn with.
 """
 
+from dataclasses import dataclass
+
 Color = tuple[int, int, int]
 Line = tuple[str, Color]
 
@@ -42,6 +44,7 @@ def block_text(word: str) -> list[str]:
 ENTRIES: tuple[tuple[str, str], ...] = (
     ("watch", "let it out into the dark"),
     ("new world", "roll a different dungeon"),
+    ("settings", "workers, colour, flourishes"),
     ("quit", "close the window"),
 )
 
@@ -92,3 +95,113 @@ def menu_lines(selected: int, seed: int, config, running: bool = False) -> list[
 def move_selection(selected: int, delta: int) -> int:
     """Wrap the highlight around the entry list."""
     return (selected + delta) % len(ENTRIES)
+
+
+@dataclass
+class Setting:
+    """One adjustable value, and the choices it steps between."""
+
+    key: str
+    label: str
+    blurb: str
+    values: tuple
+    index: int = 0
+
+    @property
+    def value(self):
+        return self.values[self.index]
+
+    def shown(self) -> str:
+        value = self.value
+        if isinstance(value, bool):
+            return "on" if value else "off"
+        if isinstance(value, float):
+            return f"{value:.2f}"
+        return str(value)
+
+
+def default_settings(config, max_workers: int) -> list[Setting]:
+    """The adjustable settings, with the current config as their starting point.
+
+    Worker count is first because it is the one that scales with the machine.
+    It is honest about what it touches: the simulation the window shows is one
+    world on one core, and no number of workers changes that. Parallelism buys
+    coverage when soak-testing many worlds, not a faster creature.
+    """
+    workers = tuple(range(1, max(2, max_workers + 1)))
+    washes = (0.0, 0.15, 0.3, 0.44, 0.6, 0.8)
+    speeds = tuple(config.speed_steps)
+    return [
+        Setting(
+            "workers",
+            "soak workers",
+            "parallel worlds when soak-testing; not the game",
+            workers,
+            index=min(len(workers) - 1, max(0, max_workers - 1)),
+        ),
+        Setting(
+            "speed",
+            "start speed",
+            "how fast it runs when you press watch",
+            speeds,
+            index=0,
+        ),
+        Setting(
+            "wash",
+            "biome colour",
+            "how strongly the ground is tinted",
+            washes,
+            index=_closest(washes, config.background_strength.get("visible", 0.44)),
+        ),
+        Setting(
+            "moss",
+            "moss",
+            "cosmetic speckle on old stone",
+            (True, False),
+            index=0 if config.moss_chance > 0 else 1,
+        ),
+    ]
+
+
+def _closest(values, target) -> int:
+    return min(range(len(values)), key=lambda i: abs(values[i] - target))
+
+
+def adjust(settings: list[Setting], selected: int, delta: int) -> None:
+    """Step one setting through its choices, clamped at both ends."""
+    setting = settings[selected]
+    setting.index = max(0, min(len(setting.values) - 1, setting.index + delta))
+
+
+def settings_lines(settings: list[Setting], selected: int, config) -> list[Line]:
+    """The settings screen, laid out like the menu it came from."""
+    lines: list[Line] = [(row, config.menu_title_color) for row in block_text("SETTINGS")]
+    lines.append(("", config.menu_dim_color))
+    for index, setting in enumerate(settings):
+        chosen = index == selected
+        marker = ">" if chosen else " "
+        colour = config.menu_pick_color if chosen else config.menu_text_color
+        lines.append(
+            (f"{marker} {setting.label:<13} {setting.shown():<6}  {setting.blurb}", colour)
+        )
+    lines.append(("", config.menu_dim_color))
+    lines.append(("left/right change    esc back", config.menu_dim_color))
+    return lines
+
+
+def apply_settings(settings: list[Setting], config):
+    """Fold the adjustable settings back into a Config."""
+    from dataclasses import replace
+
+    chosen = {setting.key: setting.value for setting in settings}
+    strengths = dict(config.background_strength)
+    visible = chosen.get("wash", strengths.get("visible", 0.44))
+    strengths["visible"] = visible
+    strengths["fresh"] = round(visible * 0.6, 3)
+    strengths["stale"] = round(visible * 0.34, 3)
+    return replace(
+        config,
+        background_strength=strengths,
+        moss_chance=0.06 if chosen.get("moss", True) else 0.0,
+        soak_workers=int(chosen.get("workers", config.soak_workers)),
+    )

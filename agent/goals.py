@@ -43,17 +43,14 @@ Decision = tuple[Position, list[Position]]  # (target, steps after start)
 def frontier(memory: Memory) -> list[Position]:
     """Believed-floor tiles with at least one never-seen 8-neighbour.
 
+    Read from the set memory maintains rather than recomputed. Walking all of
+    memory here cost more than everything else the brain did put together once
+    the agent remembered tens of thousands of tiles.
+
     Off-map neighbours cannot bite: the generator keeps a wall border, so a
     floor's neighbours are always in-bounds and 'unknown' means unseen-yet.
     """
-    result = []
-    for coord in memory.known():
-        if not memory.believes_passable(coord):
-            continue
-        x, y = coord
-        if any((x + dx, y + dy) not in memory for dx, dy in DIRS_8):
-            result.append(coord)
-    return result
+    return list(memory.frontier())
 
 
 def info_gain(memory: Memory, coord: Position) -> int:
@@ -122,7 +119,11 @@ class ExploreGoal:
     def _best_of(self, candidates, start, memory, rng, config):
         """Score a candidate list; return (best, came_from) or (None, {})."""
         cost, came_from = distances(
-            memory, start, targets=candidates, max_expansions=config.path_expansion_cap
+            memory,
+            start,
+            targets=candidates,
+            max_expansions=config.path_expansion_cap,
+            stop_after=config.plan_settle_target,
         )
         best: Position | None = None
         best_score = float("-inf")
@@ -317,6 +318,7 @@ class LootGoal:
             start,
             targets=[coord for coord, _ in candidates],
             max_expansions=config.path_expansion_cap,
+            stop_after=config.plan_settle_target,
         )
         best, best_score = None, 0.0
         for coord, value in candidates:
