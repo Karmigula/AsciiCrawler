@@ -56,6 +56,7 @@ nothing.
 | `CRAWLER_WORLD_TICKS` | roll a fresh world after this many ticks | 40,000 |
 | `CRAWLER_SEED` | which world to start on | config default |
 | `CRAWLER_HUD_CHARS` | width the side panel is clipped to | 46 |
+| `CRAWLER_NEW_WORLD_ON_DEATH` | `0` to stay in the same dungeon after a death | on |
 | `CRAWLER_HALL` | `1` to write the hall of fame to disk | off |
 
 The page scales the grid to whatever room the browser gives it, so the same

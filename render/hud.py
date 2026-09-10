@@ -67,6 +67,8 @@ def hud_lines(
     from agent.loadout import archetype
 
     lines: list[Line] = []
+    if agent.name:
+        lines.append((agent.name, config.hud_accent_color))
     lines.append(
         (
             f"hp {stats.hp:3}/{derived.max_hp:<3} {_bar(stats.hp, derived.max_hp)}",

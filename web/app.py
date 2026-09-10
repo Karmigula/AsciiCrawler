@@ -54,6 +54,11 @@ TICKS_PER_FRAME = _env_int("CRAWLER_TICKS_PER_FRAME", 1)
 # Rotating also keeps the tank worth watching.
 WORLD_TICKS = _env_int("CRAWLER_WORLD_TICKS", 40_000)
 HUD_CHARS = _env_int("CRAWLER_HUD_CHARS", 46)
+# The desktop defaults to staying in the same dungeon after a death, so the
+# next life can walk back for its own gear. Watching a stream, a death is the
+# end of a story and the interesting thing is a new one somewhere else - so
+# the hosted version rolls a fresh world instead.
+NEW_WORLD_ON_DEATH = os.environ.get("CRAWLER_NEW_WORLD_ON_DEATH", "1") == "1"
 
 
 class Viewers:
@@ -135,7 +140,7 @@ async def _run(app: FastAPI) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.session = Session(
-        DEFAULT_CONFIG,
+        replace(DEFAULT_CONFIG, new_world_on_death=NEW_WORLD_ON_DEATH),
         seed=_env_int("CRAWLER_SEED", DEFAULT_CONFIG.world_seed),
         max_ticks=WORLD_TICKS,
         # A free host's disk is wiped on every deploy, so a hall of fame kept
@@ -143,6 +148,10 @@ async def lifespan(app: FastAPI):
         record_hall=os.environ.get("CRAWLER_HALL", "0") == "1",
     )
     app.state.viewers = Viewers()
+    # One tick before the first frame is built: the HUD reads "booting" until
+    # the creature has stats, and a visitor waking a sleeping instance should
+    # not be shown that.
+    app.state.session.advance(1)
     app.state.latest = build_payload(app.state.session, 0)
     runner = asyncio.create_task(_run(app))
     try:

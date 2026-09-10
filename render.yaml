@@ -24,3 +24,6 @@ services:
       # so a world that runs for a month is a slow leak.
       - key: CRAWLER_WORLD_TICKS
         value: "40000"
+      # A death ends the story; the next one should start somewhere new.
+      - key: CRAWLER_NEW_WORLD_ON_DEATH
+        value: "1"

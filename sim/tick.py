@@ -38,6 +38,7 @@ from agent.stats import Stats
 from sim.ai import take_turns
 from sim.combat import agent_hits_monster, xp_for
 from sim import chronicle as story
+from sim import names
 from sim.chronicle import Chronicle
 from sim.hall import Fallen
 from sim.perks import on_kill
@@ -61,6 +62,7 @@ class AgentState:
     potions: int = 0
     pickups: int = 0
     goal_name: str = "EXPLORE"
+    name: str = ""
     derived: object = None
     _mind: object = None
     _loadout_signature: tuple = ()
@@ -102,6 +104,11 @@ def tick(agent: AgentState, world, rng: random.Random, config: Config) -> None:
     if agent.stats is None:
         agent.stats = Stats.starting(config)
         agent.log = Chronicle(limit=config.chronicle_length)
+        if not agent.name:
+            # Named from the world's seed and how many lives have ended here,
+            # rather than from `rng`: drawing from the tick's stream would
+            # shift every roll after it, and a name should not move a monster.
+            agent.name = names.name_for(getattr(world, "seed", 0), agent.deaths)
     mind = _refresh_loadout(agent, config)
     world.ensure_loaded((agent.x, agent.y))
     _act(agent, world, rng, config)
@@ -482,6 +489,7 @@ def _resolve_death(agent: AgentState, world, config: Config) -> None:
             killer=agent.last_wound,
             archetype=archetype(agent.derived, config) if agent.derived else "novice",
             gold=agent.gold,
+            name=agent.name,
         )
     )
     agent.life_kills = 0
@@ -489,6 +497,9 @@ def _resolve_death(agent: AgentState, world, config: Config) -> None:
     agent.life_started = agent.tick_count
     agent.last_wound = "the dark"
     agent.deaths += 1
+    # A new life is a new creature, so it gets its own name. Same stream as
+    # the first one, keyed on how many have died here.
+    agent.name = names.name_for(getattr(world, "seed", 0), agent.deaths)
     agent.stats = Stats.starting(config)
     agent.fleer.stand_down()
     spawn = getattr(world, "spawn", (agent.x, agent.y))

@@ -31,10 +31,15 @@ class Fallen:
     killer: str
     archetype: str
     gold: int = 0
+    # Defaulted so a hall written before names existed still loads: `load`
+    # drops any record whose fields do not match, and a missing name is not
+    # worth losing somebody's best run over.
+    name: str = ""
 
     def epitaph(self) -> str:
         """One line, the way a tombstone would put it."""
-        return f"level {self.level}, {self.kills} kills, {self.depth} deep - {self.killer}"
+        life = f"level {self.level}, {self.kills} kills, {self.depth} deep - {self.killer}"
+        return f"{self.name}: {life}" if self.name else life
 
 
 def score(entry: Fallen) -> int:

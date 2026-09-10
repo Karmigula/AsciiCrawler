@@ -282,11 +282,12 @@ def soak_lines(status: str, results, config) -> list[Line]:
 # columns is a job that is never quite finished.
 HALL_COLUMNS = (
     ("", 3, True),
+    ("name", 22, False),
     ("level", 5, True),
     ("kills", 6, True),
     ("depth", 6, True),
     ("lived", 7, True),
-    ("build", 24, False),
+    ("build", 16, False),
     ("killed by", 13, False),
     ("score", 6, True),
 )
@@ -327,11 +328,12 @@ def hall_lines(entries, config) -> list[Line]:
                 _hall_row(
                     [
                         f"{place}.",
+                        (entry.name or "someone")[:22],
                         entry.level,
                         entry.kills,
                         entry.depth,
                         entry.ticks,
-                        entry.archetype[:24],
+                        entry.archetype[:16],
                         entry.killer[:13],
                         score(entry),
                     ]

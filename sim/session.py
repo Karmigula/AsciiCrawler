@@ -12,7 +12,7 @@ Nothing here draws anything or knows what is watching.
 import random
 
 from config import DEFAULT_CONFIG, Config
-from sim import hall
+from sim import hall, names
 from sim.tick import AgentState, tick
 from world.chunks import ChunkStore
 
@@ -55,6 +55,10 @@ class Session:
         self.world = ChunkStore(self.config, world_seed=self.seed)
         spawn = self.world.spawn
         self.agent = AgentState(x=spawn[0], y=spawn[1])
+        # The tick would name it anyway, but not until it runs, and a world
+        # rolls over at the end of one - so a viewer would catch a frame of
+        # nameless creature every time.
+        self.agent.name = names.name_for(self.seed, 0)
         self.rng = random.Random(self.seed + 1)
         self._deaths_seen = 0
         self.worlds += 1

@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Everything down there has a name now
+
+The creature is born with one, the HUD says it above everything else, and the
+hall of fame records who it was rather than just what it managed.
+
+Names are built from syllables in five styles, each with its own consonants,
+vowels, endings and surnames - so Thalinel Moonweaver, Brokk Ironfoot and
+Snikdug Scarcrusher cannot come out of the same bag. Roughly 59,000 distinct
+names in 60,000 rolls, and every one of them pronounceable: a name has to get
+past a check for consonant pile-ups, vowel puddles and stutters before it is
+handed out, and anything that fails is redrawn.
+
+A new life is a new creature with a new name. The name is drawn from its own
+seeded stream, so adding all this did not move a single tile of terrain.
+
 ### It runs in a browser now
 
 `web/` serves the same aquarium over a WebSocket: the server ticks one world
@@ -13,6 +28,12 @@ Not a port and not a second copy of the game. The frame the browser paints is
 built by the same code the desktop window uses, which is now `render/frame.py`
 — pulled out of `main.py` so that a headless server can build a picture
 without pygame anywhere in the process.
+
+The hosted version rolls a fresh world when the creature dies. On the desktop
+the default is to stay put, so the next life can walk back for its own gear;
+watching a stream, a death is the end of a story and the interesting thing is
+a new one somewhere else. `CRAWLER_NEW_WORLD_ON_DEATH=0` restores the old
+behaviour.
 
 The side panel carries what the agent is wearing, between the stats and the
 log, the way the desktop HUD always has - cursed gear in red.
