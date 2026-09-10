@@ -14,6 +14,8 @@ Double-click `run.bat`, or:
 .venv\Scripts\python.exe main.py
 ```
 
+See [CHANGELOG.md](CHANGELOG.md) for what is in this release.
+
 ## Controls
 
 | key | |
