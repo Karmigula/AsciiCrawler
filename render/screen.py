@@ -46,8 +46,13 @@ class Screen:
     def draw_cells(
         self,
         cells: Sequence[Sequence[tuple[str, Color] | None]],
+        backgrounds: Sequence[Sequence[Color | None]] | None = None,
     ) -> None:
         """Draw a cell window; None cells stay blank.
+
+        `backgrounds`, when given, is a matching grid of per-cell washes drawn
+        under the glyphs - the biome colour lives there, because a glyph is too
+        few pixels to carry it.
 
         `cells` must be aligned with the camera window: its [0][0] entry is
         the world cell at `camera_origin(camera_center)` for the same camera
@@ -56,6 +61,21 @@ class Screen:
         clipped.
         """
         self._window.fill(self._config.background_color)
+        if backgrounds is not None:
+            cell_size = self._config.cell_size
+            for row, line in enumerate(backgrounds[: self._rows]):
+                for col, color in enumerate(line[: self._cols]):
+                    if color is None:
+                        continue
+                    self._window.fill(
+                        color,
+                        (
+                            self._margin_x + col * cell_size,
+                            self._margin_y + row * cell_size,
+                            cell_size,
+                            cell_size,
+                        ),
+                    )
         for row, line in enumerate(cells[: self._rows]):
             for col, cell in enumerate(line[: self._cols]):
                 if cell is not None:

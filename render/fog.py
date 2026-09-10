@@ -42,6 +42,16 @@ def shade(color: Color, factor: float) -> Color:
     return round(r * factor), round(g * factor), round(b * factor)
 
 
+def _toward(color: Color, target: Color, weight: float) -> Color:
+    """Blend a colour toward another by weight (0 = unchanged)."""
+    weight = max(0.0, min(1.0, weight))
+    return (
+        round(color[0] + (target[0] - color[0]) * weight),
+        round(color[1] + (target[1] - color[1]) * weight),
+        round(color[2] + (target[2] - color[2]) * weight),
+    )
+
+
 def tier_for(
     coord: Position,
     visible: Container[Position],
@@ -82,12 +92,23 @@ def fog_grid(
     ghost_color: Color = (150, 150, 160),
     ghost_entity_color: Color | None = None,
     ghost_item_color: Color | None = None,
+    color_for=None,
+    ghost_color_for=None,
+    memory_tint: Color | None = None,
+    fresh_tint: float = 0.0,
+    stale_tint: float = 0.0,
 ) -> list[list[Cell | None]]:
     """Build the drawable grid: (glyph, color) per tile, None for nothing known.
 
     `rows` is a window whose top-left cell sits at world coordinate `origin`;
     `visible` and `known` are world-coordinate sets, matched against the window
     through that offset (default (0, 0) keeps local-coordinate rows working).
+
+    `color_for(glyph, coord)` overrides the flat palette when terrain colour
+    depends on where the tile is - biome shading needs the coordinate, not just
+    the glyph. `ghost_color_for(glyph)` does the same for whatever is standing
+    on a tile. Both fall back to the palette and the flat ghost colours, which
+    is what the callers that do not shade by position still want.
     """
     origin_x, origin_y = origin
     age_of = getattr(known, "age", None)
@@ -111,16 +132,30 @@ def fog_grid(
                 cells.append(None)
                 continue
             factor = {VISIBLE: 1.0, FRESH: remembered_factor, STALE: stale}[tier]
-            draw, base = glyph, palette[glyph]
+            tint = {VISIBLE: 0.0, FRESH: fresh_tint, STALE: stale_tint}[tier]
+            draw = glyph
+            base = palette[glyph] if color_for is None else color_for(glyph, coord)
             if snapshot_of is not None:
                 entity, item = snapshot_of(coord)
                 if entity is not None:
                     # Remembered monsters and remembered loot are different
                     # kinds of news, and a watcher should be able to tell them
                     # apart at a glance without reading the glyph.
-                    draw, base = entity, ghost_entity_color or ghost_color
+                    draw = entity
+                    base = (
+                        ghost_color_for(entity)
+                        if ghost_color_for is not None
+                        else (ghost_entity_color or ghost_color)
+                    )
                 elif item is not None:
-                    draw, base = item, ghost_item_color or ghost_color
+                    draw = item
+                    base = (
+                        ghost_color_for(item)
+                        if ghost_color_for is not None
+                        else (ghost_item_color or ghost_color)
+                    )
+            if memory_tint is not None and tint > 0.0:
+                base = _toward(base, memory_tint, tint)
             cells.append((draw, base if factor == 1.0 else shade(base, factor)))
         grid.append(cells)
     return grid

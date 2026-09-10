@@ -110,3 +110,46 @@ def test_the_key_map_mentions_the_keys_that_exist():
     body = _text(help_lines(DEFAULT_CONFIG))
     for key in ("space", "F1", "F5", "n ", "p "):
         assert key in body
+
+
+def test_a_long_item_name_wraps_instead_of_being_cut():
+    """Clipping a legendary hides the very affixes that make it interesting."""
+    from sim.affixes import BY_KEY
+    from sim.items import ITEMS
+    from world.populate import Item
+
+    kinds = {k.key: k for k in ITEMS}
+    agent = _running_agent()
+    agent.equipped["ring"] = Item(
+        kind=kinds["ring"],
+        x=0,
+        y=0,
+        rarity="legendary",
+        affixes=tuple(BY_KEY[k] for k in ("sickly", "farsighted", "vampiric", "curious")),
+    )
+    lines = equipment_lines(agent, DEFAULT_CONFIG)
+    body = _text(lines)
+    assert "sickly" in body and "curious" in body, "the whole name should survive"
+    assert all(len(text) <= DEFAULT_CONFIG.hud_max_chars for text, _ in lines)
+
+
+def test_wrapping_keeps_the_slot_column():
+    from render.hud import wrap
+
+    assert wrap("one two three", 9) == ["one two", "three"]
+    assert wrap("short", 20) == ["short"]
+    assert wrap("", 10) == [""]
+
+
+def test_a_name_too_long_for_two_lines_is_still_clipped():
+    from render.hud import wrap
+
+    lines = wrap("aaa bbb ccc ddd eee fff ggg hhh", 8, max_lines=2)
+    assert len(lines) == 2
+    assert all(len(line) <= 8 for line in lines)
+
+
+def test_short_names_do_not_gain_a_second_line():
+    agent = _running_agent()
+    plain = [t for t, _ in equipment_lines(agent, DEFAULT_CONFIG)]
+    assert sum(1 for t in plain if "weapon" in t) == 1

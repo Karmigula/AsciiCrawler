@@ -1,6 +1,6 @@
 """All tunables for AsciiCrawler, as one flat frozen dataclass."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -46,6 +46,72 @@ class Config:
     water_color: tuple[int, int, int] = (60, 120, 200)
     lava_color: tuple[int, int, int] = (220, 80, 40)
 
+    # Colour. Terrain stays low-saturation on purpose: it is the backdrop, and
+    # anything competing with the agent, a monster or an item for attention is
+    # working against the reader. The three biome tables blend by distance, so
+    # walking outward looks like walking outward.
+    biome_colors: dict = field(
+        default_factory=lambda: {
+            # near home: dry, warm, quarried stone
+            "home": {
+                "#": (158, 132, 96),
+                ".": (82, 67, 47),
+                "~": (72, 118, 170),
+                "^": (208, 96, 48),
+            },
+            # the caves: damp, cold, blue-grey rock
+            "caves": {
+                "#": (98, 128, 150),
+                ".": (46, 66, 82),
+                "~": (64, 126, 196),
+                "^": (216, 88, 44),
+            },
+            # the deep caverns: bruised volcanic dark
+            "deep": {
+                "#": (136, 88, 122),
+                ".": (54, 36, 62),
+                "~": (72, 96, 190),
+                "^": (238, 92, 36),
+            },
+        }
+    )
+    tile_jitter: float = 0.09  # +-9% per-tile brightness, hashed by position
+    # How strongly each cell's background is washed with its terrain colour,
+    # per fog tier. This is what carries the biome: a glyph is a couple of lit
+    # pixels, so the ground has to do the work. Unknown stays black - the dark
+    # is the point, and washing it would show rooms the agent has never seen.
+    background_strength: dict = field(
+        default_factory=lambda: {
+            "visible": 0.44,
+            "fresh": 0.26,
+            "stale": 0.15,
+        }
+    )
+
+    # Monsters run hotter as they get deadlier: a dragon should read as a
+    # dragon before the watcher has parsed the letter.
+    monster_colors: dict = field(
+        default_factory=lambda: {
+            "r": (150, 146, 140),
+            "g": (120, 186, 116),
+            "o": (186, 160, 78),
+            "O": (214, 142, 84),
+            "T": (190, 118, 206),
+            "D": (236, 86, 74),
+        }
+    )
+    item_colors: dict = field(
+        default_factory=lambda: {
+            ")": (206, 210, 224),
+            "[": (150, 176, 208),
+            "=": (232, 198, 116),
+            '"': (204, 152, 224),
+            "!": (124, 222, 186),
+            "$": (240, 212, 94),
+            "+": (136, 136, 148),
+        }
+    )
+
     # HUD and overlays
     hud_color: tuple[int, int, int] = (200, 200, 210)
     hud_dim_color: tuple[int, int, int] = (110, 110, 125)
@@ -54,6 +120,7 @@ class Config:
     hud_warn_color: tuple[int, int, int] = (220, 190, 90)
     hud_bad_color: tuple[int, int, int] = (220, 90, 90)
     hud_panel_width: int = 300
+    hud_max_chars: int = 34  # HUD lines are clipped to this, longest gear names included
     hud_line_height: int = 18
     overlay_hot_color: tuple[int, int, int] = (250, 240, 140)
     overlay_cold_color: tuple[int, int, int] = (70, 90, 140)
@@ -170,6 +237,10 @@ class Config:
     # the very next tick, flickering in and out of flight while it works its
     # way out of a bad spot.
     flee_cornered_cooldown: int = 40
+    # A flight that has run this long is not working - the agent is penned
+    # between threats, or wearing something craven enough that it panics at
+    # what it should be fighting. Give up, take the cooldown, do something.
+    flee_max_ticks: int = 60
 
     # memory decay: knowledge expires, so the world goes unknown again
     memory_ttl: int = 3000  # ticks before a tile is forgotten outright
@@ -177,8 +248,14 @@ class Config:
     memory_stale_fraction: float = 0.5  # age > ttl * this -> the stale tier
 
     # fog of war
-    remembered_brightness: float = 0.6  # fresh memory
-    stale_brightness: float = 0.35  # older than memory_stale_fraction of TTL
+    remembered_brightness: float = 0.72  # fresh memory
+    stale_brightness: float = 0.5  # older than memory_stale_fraction of TTL
+    # Remembered ground shifts toward this instead of only darkening. Most of
+    # the screen is memory rather than sight, so dimming alone made the whole
+    # world look unlit.
+    memory_tint_color: tuple[int, int, int] = (74, 92, 132)
+    fresh_tint: float = 0.30
+    stale_tint: float = 0.52
     ghost_color: tuple[int, int, int] = (150, 150, 160)  # remembered entities
 
 

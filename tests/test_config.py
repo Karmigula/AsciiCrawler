@@ -57,8 +57,10 @@ def test_default_config_values():
     assert DEFAULT_CONFIG.max_fps > DEFAULT_CONFIG.tps
     assert DEFAULT_CONFIG.agent_glyph == "@"
     assert DEFAULT_CONFIG.fov_radius == 8
-    assert DEFAULT_CONFIG.remembered_brightness == 0.6
-    assert 0.0 < DEFAULT_CONFIG.remembered_brightness < 1.0
+    # Not pinned to an exact value: brightness is a matter of taste that gets
+    # retuned. What must hold is the ordering - memory is dimmer than sight,
+    # and stale memory dimmer than fresh.
+    assert 0.0 < DEFAULT_CONFIG.stale_brightness < DEFAULT_CONFIG.remembered_brightness < 1.0
     assert DEFAULT_CONFIG.bsp_min_room + 2 <= DEFAULT_CONFIG.bsp_min_partition
     # agent brain tunables
     assert DEFAULT_CONFIG.w_explore > 0.0

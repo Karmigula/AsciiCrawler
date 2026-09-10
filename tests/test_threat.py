@@ -145,3 +145,30 @@ def test_an_ordinary_stand_down_carries_no_cooldown():
     goal.active = True
     goal.stand_down()
     assert goal.wants_control((5, 1), scary, stats, DEFAULT_CONFIG, None, tick=1)
+
+
+def test_a_flight_that_never_works_eventually_gives_up():
+    """Penned between two threats it can outrun neither of, the agent would
+    otherwise run back and forth between them until something killed it."""
+    goal = FleeGoal()
+    stats = Stats.starting(DEFAULT_CONFIG)
+    scary = _corridor(entities={(6, 1): "D"})
+
+    assert goal.wants_control((5, 1), scary, stats, DEFAULT_CONFIG, None, tick=100)
+    goal.decide((5, 1), scary, DEFAULT_CONFIG, tick=100)
+    assert goal.active
+
+    still_early = 100 + DEFAULT_CONFIG.flee_max_ticks - 1
+    assert goal.wants_control((5, 1), scary, stats, DEFAULT_CONFIG, None, tick=still_early)
+
+    too_long = 100 + DEFAULT_CONFIG.flee_max_ticks + 1
+    assert not goal.wants_control((5, 1), scary, stats, DEFAULT_CONFIG, None, tick=too_long)
+
+
+def test_the_clock_starts_when_the_flight_does():
+    goal = FleeGoal()
+    scary = _corridor(entities={(6, 1): "D"})
+    goal.decide((5, 1), scary, DEFAULT_CONFIG, tick=500)
+    assert goal.started_tick == 500
+    goal.decide((5, 1), scary, DEFAULT_CONFIG, tick=520)
+    assert goal.started_tick == 500, "a continuing flight keeps its original clock"

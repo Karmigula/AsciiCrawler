@@ -13,6 +13,18 @@ the agent is wrong about.
 Line = tuple[str, tuple[int, int, int]]
 
 
+def fit(text: str, limit: int) -> str:
+    """Clip a line to the panel, marking that something was cut.
+
+    Gear names are the reason: "sickly farsighted vampiric ring" is longer than
+    the panel is wide, and an item name that runs off the screen tells the
+    watcher less than one that admits it was trimmed.
+    """
+    if limit <= 1 or len(text) <= limit:
+        return text
+    return text[: limit - 1] + "…"
+
+
 def _bar(value: int, maximum: int, width: int = 12) -> str:
     """A crude text meter: [####----]."""
     if maximum <= 0:
@@ -34,7 +46,7 @@ def health_color(value: int, maximum: int, config) -> tuple[int, int, int]:
 
 
 def hud_lines(agent, world_size: int, config, speed: int = 1, paused: bool = False) -> list[Line]:
-    """Build the HUD as (text, colour) lines, top to bottom."""
+    """Build the HUD as (text, colour) lines, top to bottom, clipped to fit."""
     stats = agent.stats
     derived = agent.derived
     if stats is None or derived is None:
@@ -86,7 +98,9 @@ def hud_lines(agent, world_size: int, config, speed: int = 1, paused: bool = Fal
     lines.append((f"near   {len(agent.active_entities)} awake", config.hud_color))
     speed_text = "PAUSED" if paused else f"{speed}x"
     lines.append((f"speed  {speed_text}", config.hud_accent_color))
-    return lines
+    # Clip at the end rather than per line: a build label can name four
+    # synergies and run off the panel just as easily as an item name can.
+    return [(fit(text, config.hud_max_chars), colour) for text, colour in lines]
 
 
 def _goal_color(goal: str, config) -> tuple[int, int, int]:
@@ -96,8 +110,46 @@ def _goal_color(goal: str, config) -> tuple[int, int, int]:
     }.get(goal, config.hud_good_color)
 
 
+def wrap(text: str, limit: int, max_lines: int = 2) -> list[str]:
+    """Break text on word boundaries into at most `max_lines` lines.
+
+    Gear names are why: a legendary can be "sickly farsighted vampiric ring",
+    which is longer than the panel is wide. Clipping it hides the very affixes
+    that make the item interesting, so the name gets a second line instead. Any
+    overflow past `max_lines` is still clipped - a name is worth two lines, not
+    the whole panel.
+
+    Wraps the text alone and leaves indenting to the caller, so a label column
+    stays a column instead of being swallowed by the word splitting.
+    """
+    words = text.split()
+    if not words or limit <= 0:
+        return [text]
+    lines: list[str] = []
+    current = ""
+    dropped = False
+    for index, word in enumerate(words):
+        candidate = f"{current} {word}" if current else word
+        if len(candidate) <= limit or not current:
+            current = candidate
+            continue
+        if len(lines) + 1 == max_lines:
+            dropped = index < len(words)
+            break
+        lines.append(current)
+        current = word
+    if len(lines) < max_lines and current:
+        lines.append(current)
+    out = [fit(line, limit) for line in lines[:max_lines]]
+    if dropped and out:
+        # Ran out of lines with words still to place. Mark it, so a name that
+        # was cut short does not read as the whole name.
+        out[-1] = fit(out[-1] + " …", limit)
+    return out
+
+
 def equipment_lines(agent, config) -> list[Line]:
-    """What the agent is wearing, one line per slot."""
+    """What the agent is wearing, wrapped onto a second line when it will not fit."""
     from agent.loadout import EQUIP_SLOTS
 
     lines: list[Line] = [("worn", config.hud_accent_color)]
@@ -105,9 +157,13 @@ def equipment_lines(agent, config) -> list[Line]:
         item = agent.equipped.get(slot)
         if item is None:
             lines.append((f" {slot:<7} -", config.hud_dim_color))
-        else:
-            colour = config.hud_bad_color if item.cursed else config.hud_color
-            lines.append((f" {slot:<7} {item.name}", colour))
+            continue
+        colour = config.hud_bad_color if item.cursed else config.hud_color
+        label = f" {slot:<7} "
+        wrapped = wrap(item.name, config.hud_max_chars - len(label))
+        lines.append((label + wrapped[0], colour))
+        # Continuations line up under the name, so the slot column survives.
+        lines.extend((" " * len(label) + line, colour) for line in wrapped[1:])
     if agent.backpack:
         lines.append((f" bag     {len(agent.backpack)} spare", config.hud_dim_color))
     return lines
@@ -130,5 +186,7 @@ def chronicle_lines(agent, config) -> list[Line]:
         return []
     lines: list[Line] = [("recently", config.hud_accent_color)]
     for tick_at, text in entries:
-        lines.append((f" {tick_at:>6}  {text}", config.hud_dim_color))
+        lines.append(
+            (fit(f" {tick_at:>6}  {text}", config.hud_max_chars), config.hud_dim_color)
+        )
     return lines

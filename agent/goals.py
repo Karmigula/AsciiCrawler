@@ -170,6 +170,7 @@ class FleeGoal:
     path: list[Position] = field(default_factory=list)
     flights: int = 0
     cornered_until: int = -1
+    started_tick: int = 0
 
     def wants_control(
         self,
@@ -188,13 +189,20 @@ class FleeGoal:
         """
         if tick < self.cornered_until:
             return False  # recently cornered: give it a moment to get clear
+        if self.active and tick - self.started_tick > config.flee_max_ticks:
+            # This flight is not working. Penned between two threats the agent
+            # can outrun neither of, it would otherwise run back and forth
+            # between them until something killed it.
+            return False
         here = danger(memory, start, config)
         threshold = flee_threshold(stats, config, derived)
         if self.active:
             return here > threshold * config.flee_release
         return here > threshold
 
-    def decide(self, start: Position, memory: Memory, config: Config) -> list[Position]:
+    def decide(
+        self, start: Position, memory: Memory, config: Config, tick: int = 0
+    ) -> list[Position]:
         """Walk believed-passable ground to the calmest tile within reach.
 
         A local breadth-first sweep, not a path to safety in general: fleeing
@@ -207,6 +215,7 @@ class FleeGoal:
         """
         if not self.active:
             self.flights += 1  # count flights, not ticks spent running
+            self.started_tick = tick
         self.active = True
         best, best_key, came_from = start, None, {}
         seen = {start}

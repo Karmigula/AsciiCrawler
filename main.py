@@ -30,6 +30,7 @@ from config import DEFAULT_CONFIG, Config
 from render.fog import fog_grid
 from render.hud import chronicle_lines, equipment_lines, help_lines, hud_lines
 from render.flourish import speckle_moss
+from render.palette import background_grid, item_color, monster_color, terrain_color
 from render.overlays import OVERLAY_NAMES, apply_overlay
 from render.screen import Screen
 from sim.tick import AgentState, tick
@@ -129,13 +130,27 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
             stale_factor=config.stale_brightness,
             stale_fraction=config.memory_stale_fraction,
             ghost_color=config.ghost_color,
-            ghost_entity_color=config.ghost_danger_color,
-            ghost_item_color=config.ghost_rare_color,
+            color_for=lambda glyph, coord: terrain_color(glyph, coord, config),
+            ghost_color_for=lambda glyph: _thing_color(glyph, config),
+            memory_tint=config.memory_tint_color,
+            fresh_tint=config.fresh_tint,
+            stale_tint=config.stale_tint,
         )
         cells = speckle_moss(cells, origin, Tile.FLOOR.glyph, config)
         if overlay is not None:
             cells = apply_overlay(cells, overlay, origin, agent, visible, mind)
-        screen.draw_cells(cells)
+        screen.draw_cells(
+            cells,
+            background_grid(
+                rows_text,
+                origin,
+                visible,
+                agent.memory,
+                config,
+                tick=agent.tick_count,
+                ttl=mind.memory_ttl,
+            ),
+        )
         screen.draw_glyph(
             config.agent_glyph, agent.x, agent.y, camera, config.agent_color
         )
@@ -149,6 +164,13 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
             )
         screen.present()
     screen.close()
+
+
+def _thing_color(glyph: str, config: Config):
+    """Whatever is standing on a tile: monsters by threat, items by kind."""
+    if glyph in config.monster_colors:
+        return monster_color(glyph, config)
+    return item_color(glyph, config)
 
 
 def _save_screenshot(screen: Screen, config: Config, seed: int, agent: AgentState) -> None:

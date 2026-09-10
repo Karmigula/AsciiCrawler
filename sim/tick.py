@@ -543,7 +543,7 @@ def _think(agent: AgentState, rng: random.Random, config: Config) -> None:
     ):
         agent.explorer.drop_plan()
         agent.looter.clear()
-        if agent.fleer.decide(here, agent.memory, config):
+        if agent.fleer.decide(here, agent.memory, config, agent.tick_count):
             agent.goal_name = "FLEE"
             return
         # Nowhere calmer within reach: fleeing with nowhere to run is not
@@ -555,7 +555,9 @@ def _think(agent: AgentState, rng: random.Random, config: Config) -> None:
         # again for a moment - re-triggering next tick just flickers.
         agent.fleer.stand_down(agent.tick_count + config.flee_cornered_cooldown)
     elif agent.fleer.active:
-        agent.fleer.stand_down()
+        # Either the danger passed or the flight timed out; a timed-out flight
+        # takes the cooldown so it does not restart on the next tick.
+        agent.fleer.stand_down(agent.tick_count + config.flee_cornered_cooldown)
     if agent.looter.path:
         agent.goal_name = "LOOT"
         return  # already on the way to something
