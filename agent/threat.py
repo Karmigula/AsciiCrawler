@@ -20,18 +20,24 @@ Position = tuple[int, int]
 
 
 def remembered_monsters(memory: Memory, near: Position, radius: int) -> list:
-    """(position, kind) for every monster memory believes is within `radius`."""
+    """(position, kind) for every monster memory believes is within `radius`.
+
+    Reads memory's index of remembered monsters rather than sweeping the
+    square around `near`. The difference matters: danger() is sampled per
+    EXPLORE candidate and per node of the FLEE search, so a square sweep here
+    was the most expensive thing in a long run by a wide margin.
+    """
     x, y = near
     found = []
-    for dy in range(-radius, radius + 1):
-        for dx in range(-radius, radius + 1):
-            coord = (x + dx, y + dy)
-            glyph, _ = memory.snapshot(coord)
-            if glyph is None:
-                continue
-            kind = BY_GLYPH.get(glyph)
-            if kind is not None:
-                found.append((coord, kind))
+    for coord in memory.entity_coords():
+        if max(abs(coord[0] - x), abs(coord[1] - y)) > radius:
+            continue
+        glyph, _ = memory.snapshot(coord)
+        if glyph is None:
+            continue
+        kind = BY_GLYPH.get(glyph)
+        if kind is not None:
+            found.append((coord, kind))
     return found
 
 

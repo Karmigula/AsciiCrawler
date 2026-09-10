@@ -268,7 +268,7 @@ class LootGoal:
         greed as much as to geography.
         """
         candidates = []
-        for coord in memory.known():
+        for coord in memory.item_coords():
             glyph = memory.snapshot(coord)[1]
             if glyph is None:
                 continue

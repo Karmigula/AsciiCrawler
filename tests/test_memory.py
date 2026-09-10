@@ -134,3 +134,53 @@ def test_re_sighting_an_empty_tile_clears_its_snapshot():
 
 def test_snapshot_of_an_unknown_tile_is_empty():
     assert Memory().snapshot((9, 9)) == (None, None)
+
+
+def test_the_entity_index_tracks_what_memory_believes_is_standing_there():
+    """The index is maintained, not searched, so it has to stay in step -
+    a stale entry is an invisible monster or a phantom one."""
+    memory = Memory()
+    memory.observe({(1, 1): Tile.FLOOR}, tick=1, entities={(1, 1): "g"})
+    assert memory.entity_coords() == {(1, 1)}
+
+
+def test_seeing_a_tile_empty_takes_it_out_of_the_entity_index():
+    memory = Memory()
+    memory.observe({(1, 1): Tile.FLOOR}, tick=1, entities={(1, 1): "g"})
+    memory.observe({(1, 1): Tile.FLOOR}, tick=2)
+    assert memory.entity_coords() == set()
+
+
+def test_pruning_clears_the_indexes_too():
+    """Otherwise a forgotten monster keeps frightening the agent forever."""
+    memory = Memory()
+    memory.observe(
+        {(1, 1): Tile.FLOOR}, tick=1, entities={(1, 1): "D"}, items={(1, 1): "!"}
+    )
+    memory.prune(tick=10_000, ttl=100)
+    assert memory.entity_coords() == set()
+    assert memory.item_coords() == set()
+
+
+def test_the_item_index_tracks_remembered_loot():
+    memory = Memory()
+    memory.observe({(2, 2): Tile.FLOOR}, tick=1, items={(2, 2): ")"})
+    assert memory.item_coords() == {(2, 2)}
+    memory.observe({(2, 2): Tile.FLOOR}, tick=2)
+    assert memory.item_coords() == set()
+
+
+def test_the_indexes_agree_with_the_records_they_summarise():
+    """The property that makes the index safe to read instead of the records."""
+    memory = Memory()
+    memory.observe(
+        {(x, 0): Tile.FLOOR for x in range(20)},
+        tick=1,
+        entities={(3, 0): "r", (7, 0): "o"},
+        items={(5, 0): "!", (7, 0): ")"},
+    )
+    memory.observe({(3, 0): Tile.FLOOR}, tick=2)  # the rat moved on
+    from_records = {c for c in memory.known() if memory.snapshot(c)[0] is not None}
+    assert memory.entity_coords() == from_records
+    items_from_records = {c for c in memory.known() if memory.snapshot(c)[1] is not None}
+    assert memory.item_coords() == items_from_records

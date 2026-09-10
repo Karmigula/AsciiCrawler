@@ -43,6 +43,14 @@ class Memory:
     def __init__(self) -> None:
         self._records: dict[Position, MemoryRecord] = {}
         self.generation: int = 0  # bumps once per observe that adds new tiles
+        # Coordinates whose record currently holds a monster or an item
+        # snapshot. Maintained rather than searched: the threat field samples
+        # danger per candidate tile (and per node of the FLEE search), and
+        # scanning a square of memory for each of those made the sweep the
+        # single most expensive thing in a long run. These sets are small -
+        # what the agent has recently seen, not what it remembers.
+        self._entity_coords: set[Position] = set()
+        self._item_coords: set[Position] = set()
 
     def observe(
         self,
@@ -77,9 +85,29 @@ class Memory:
                 record.terrain_belief = terrain
                 record.last_entity_snapshot = entities.get(coord)
                 record.last_item = items.get(coord)
+            self._index(coord, entities.get(coord), items.get(coord))
         if fresh:
             self.generation += 1
         return fresh
+
+    def _index(self, coord: Position, entity: str | None, item: str | None) -> None:
+        """Keep the snapshot indexes in step with a record that just changed."""
+        if entity is None:
+            self._entity_coords.discard(coord)
+        else:
+            self._entity_coords.add(coord)
+        if item is None:
+            self._item_coords.discard(coord)
+        else:
+            self._item_coords.add(coord)
+
+    def entity_coords(self) -> set:
+        """Coordinates where memory believes a monster is standing."""
+        return self._entity_coords
+
+    def item_coords(self) -> set:
+        """Coordinates where memory believes an item is lying."""
+        return self._item_coords
 
     def prune(self, tick: int, ttl: int) -> int:
         """Drop every record older than `ttl` ticks. Returns how many went.
@@ -96,6 +124,8 @@ class Memory:
         ]
         for coord in expired:
             del self._records[coord]
+            self._entity_coords.discard(coord)
+            self._item_coords.discard(coord)
         if expired:
             self.generation += 1
         return len(expired)
