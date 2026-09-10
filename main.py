@@ -355,10 +355,14 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
         )
         if show_hud:
             screen.draw_panel(hud_lines(agent, len(world), config, speed, paused))
+            # Both, not one or the other: they sit in different corners, and
+            # the bag was never a reason to stop telling you what just
+            # happened. The bag yields if the window is too short for both.
+            recent = chronicle_lines(agent, config)
+            screen.draw_panel(recent, right=False, top=False)
             if show_bag:
-                screen.draw_panel(bag_lines(agent, config), right=False, top=True)
-            else:
-                screen.draw_panel(chronicle_lines(agent, config), right=False, top=False)
+                room = screen.panel_capacity(len(recent))
+                screen.draw_panel(bag_lines(agent, config)[:room], right=False, top=True)
             screen.draw_panel(
                 equipment_lines(agent, config) + [("", config.hud_color)] + help_lines(config),
                 right=True,

@@ -344,6 +344,17 @@ class Screen:
                 self._window.blit(surface, (x, y))
             y += heights[index]
 
+    def panel_capacity(self, reserved_lines: int = 0) -> int:
+        """How many lines a panel can show without running into a reserved block.
+
+        The window is resizable, so two panels that sit comfortably in opposite
+        corners at 800px can meet in the middle at 400. The one that yields is
+        whichever the caller asks about.
+        """
+        per_line = max(1, self._config.hud_line_height)
+        used = reserved_lines * per_line + 24
+        return max(1, (self._height - used) // per_line)
+
     def screenshot(self, path) -> None:
         """Save the current frame to a png."""
         pygame.image.save(self._window, str(path))
