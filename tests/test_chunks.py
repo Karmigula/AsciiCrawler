@@ -203,33 +203,106 @@ def test_all_floor_reachable_from_chunk_center(seed, cx, cy):
 
 
 @pytest.mark.parametrize("seed", (4242, 7, 99))
-def test_near_origin_chunks_are_room_like(seed):
-    """BSP band: long straight wall runs (room walls) — measured >= 244."""
+def test_each_biome_has_its_own_shape(seed):
+    """Biome decides shape now, not distance.
+
+    Measured with the long-wall-run count, which separates architecture from
+    erosion. Medians over three seeds when this was written:
+
+        warren 61   caverns 84   ashfields 85   caves 130   marsh 136
+        crystal 194   ossuary 248   halls 294   ruins 298
+
+    Asserted as bands rather than one global threshold, because two of these
+    deliberately sit between the extremes: crystal is a cave smoothed until it
+    has long clean faces, and the ossuary is architecture built out of niches
+    rather than halls. A single cutoff called crystal a room and the ossuary a
+    cave, which is exactly backwards.
+    """
+    import statistics
+    from collections import defaultdict
+
+    from world.biomes import biome_at
+
     store = _store(seed)
-    for cx, cy in NEAR_CHUNKS:
-        grid = store.get_chunk(cx, cy).tiles.tolist()
-        assert _long_wall_runs(grid) >= 180, (seed, cx, cy)
+    runs = defaultdict(list)
+    for cx in range(-6, 7):
+        for cy in range(-6, 7):
+            biome = biome_at(seed, cx, cy, DEFAULT_CONFIG)
+            runs[biome.key].append(_long_wall_runs(store.get_chunk(cx, cy).tiles.tolist()))
+
+    def median(key):
+        return statistics.median(runs[key]) if runs.get(key) else None
+
+    architectural = [median(k) for k in ("halls", "ruins", "ossuary") if median(k)]
+    organic = [median(k) for k in ("warren", "caverns", "ashfields") if median(k)]
+    assert architectural, f"seed {seed}: no built biomes in range"
+    assert organic, f"seed {seed}: no eroded biomes in range"
+    assert min(architectural) > 150, (seed, dict(runs.keys() and {}))
+    assert max(organic) < 130, (seed, organic)
+    assert min(architectural) > max(organic), "built places should read as built"
 
 
 @pytest.mark.parametrize("seed", (4242, 7, 99))
-def test_far_chunks_are_cave_like(seed):
-    """CA bands: blobby walls — measured <= 112 long runs."""
+def test_the_crystal_hollows_sit_between_cave_and_architecture(seed):
+    """Its whole design is a cave smoothed until the faces go straight."""
+    import statistics
+    from collections import defaultdict
+
+    from world.biomes import biome_at
+
     store = _store(seed)
-    for cx, cy in FAR_CHUNKS:
-        grid = store.get_chunk(cx, cy).tiles.tolist()
-        assert _long_wall_runs(grid) < 180, (seed, cx, cy)
+    runs = defaultdict(list)
+    for cx in range(-7, 8):
+        for cy in range(-7, 8):
+            biome = biome_at(seed, cx, cy, DEFAULT_CONFIG)
+            if biome.key in ("crystal", "caves", "halls"):
+                runs[biome.key].append(
+                    _long_wall_runs(store.get_chunk(cx, cy).tiles.tolist())
+                )
+    if not all(runs.get(k) for k in ("crystal", "caves", "halls")):
+        pytest.skip(f"seed {seed}: not all three biomes within range")
+    assert (
+        statistics.median(runs["caves"])
+        < statistics.median(runs["crystal"])
+        < statistics.median(runs["halls"])
+    )
 
 
 @pytest.mark.parametrize("seed", (4242, 7, 99))
-def test_far_chunks_contain_liquids(seed):
-    """Cavern band (statistical, seeded): ponds do form somewhere far out."""
+def test_liquids_appear_in_the_biomes_that_have_them(seed):
+    """Statistical and seeded: a water or lava biome does grow pools."""
+    from world.biomes import biome_at
+
     store = _store(seed)
-    liquid = False
-    for cx, cy in CAVERNS:
-        tiles = store.get_chunk(cx, cy).tiles
-        if ((tiles == WATER) | (tiles == LAVA)).any():
-            liquid = True
-    assert liquid, f"seed {seed}: no liquids in any cavern chunk"
+    wet_biomes_seen = set()
+    liquid_found = set()
+    for cx in range(-8, 9):
+        for cy in range(-8, 9):
+            biome = biome_at(seed, cx, cy, DEFAULT_CONFIG)
+            if biome.liquids == "none":
+                continue
+            wet_biomes_seen.add(biome.key)
+            tiles = store.get_chunk(cx, cy).tiles
+            if ((tiles == WATER) | (tiles == LAVA)).any():
+                liquid_found.add(biome.key)
+    assert wet_biomes_seen, f"seed {seed}: no liquid biomes in range"
+    assert liquid_found, f"seed {seed}: liquid biomes {wet_biomes_seen} grew no pools"
+
+
+@pytest.mark.parametrize("seed", (4242, 7, 99))
+def test_a_dry_biome_stays_dry(seed):
+    from world.biomes import biome_at
+
+    store = _store(seed)
+    for cx in range(-6, 7):
+        for cy in range(-6, 7):
+            biome = biome_at(seed, cx, cy, DEFAULT_CONFIG)
+            if biome.liquids != "none":
+                continue
+            tiles = store.get_chunk(cx, cy).tiles
+            assert not ((tiles == WATER) | (tiles == LAVA)).any(), (
+                f"{biome.key} at {(cx, cy)} should have no pools"
+            )
 
 
 # -------------------------------------------------------------- liquids

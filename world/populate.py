@@ -160,7 +160,12 @@ def max_tier_for(cx: int, cy: int, config: Config) -> int:
 
 
 def populate(
-    rng: random.Random, tiles: np.ndarray, cx: int, cy: int, config: Config
+    rng: random.Random,
+    tiles: np.ndarray,
+    cx: int,
+    cy: int,
+    config: Config,
+    allowed: tuple = (),
 ) -> ChunkContents:
     """Roll this chunk's contents from its own seeded rng. Never mutates tiles.
 
@@ -188,6 +193,12 @@ def populate(
         config.spawn_density_far - config.spawn_density_near
     )
     table = table_for_tier(max_tier_for(cx, cy, config))
+    if allowed:
+        # The biome's own bestiary, intersected with what this depth unlocks.
+        # A shallow ossuary still gets rats rather than nothing: the depth
+        # gradient wins, and the theme narrows what is left.
+        themed = tuple(kind for kind in table if kind.glyph in allowed)
+        table = themed or table
 
     rng.shuffle(spots)
     taken = iter(spots)  # one shared pool: nothing shares a tile with anything

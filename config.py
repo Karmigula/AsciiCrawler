@@ -28,6 +28,13 @@ class Config:
     band_bsp_max: int = 150  # noised distance below this -> BSP rooms+corridors
     band_cavern_min: int = 400  # ...above this -> CA caverns with liquid pools
     band_blend_noise: float = 48.0
+    # How many chunks across a biome region is. Four means a theme covers about
+    # 256 tiles square - big enough to feel like a place, small enough that a
+    # wander crosses several in a session.
+    region_size: int = 4
+    # How much darker the world gets with distance, at tier_distance_max. The
+    # biome sets the hue; this keeps depth legible on top of it.
+    depth_dimming: float = 0.22
     seam_jitter: int = 8  # max offset of a seam crossing from the edge midpoint
     # BSP band (per chunk)
     bsp_min_partition: int = 12
@@ -48,31 +55,25 @@ class Config:
 
     # Colour. Terrain stays low-saturation on purpose: it is the backdrop, and
     # anything competing with the agent, a monster or an item for attention is
-    # working against the reader. The three biome tables blend by distance, so
-    # walking outward looks like walking outward.
+    # working against the reader. One palette per biome, keyed by biome name.
     biome_colors: dict = field(
         default_factory=lambda: {
-            # near home: dry, warm, quarried stone
-            "home": {
-                "#": (158, 132, 96),
-                ".": (82, 67, 47),
-                "~": (72, 118, 170),
-                "^": (208, 96, 48),
-            },
-            # the caves: damp, cold, blue-grey rock
-            "caves": {
-                "#": (98, 128, 150),
-                ".": (46, 66, 82),
-                "~": (64, 126, 196),
-                "^": (216, 88, 44),
-            },
-            # the deep caverns: bruised volcanic dark
-            "deep": {
-                "#": (136, 88, 122),
-                ".": (54, 36, 62),
-                "~": (72, 96, 190),
-                "^": (238, 92, 36),
-            },
+            # keys match world.biomes.BIOMES
+            "halls": {"#": (158, 132, 96), ".": (82, 67, 47), "~": (72, 118, 170), "^": (208, 96, 48)},
+            "caves": {"#": (98, 128, 150), ".": (46, 66, 82), "~": (64, 126, 196), "^": (216, 88, 44)},
+            "caverns": {"#": (136, 88, 122), ".": (54, 36, 62), "~": (72, 96, 190), "^": (238, 92, 36)},
+            # charcoal and ember: the lava is the terrain here
+            "ashfields": {"#": (96, 72, 62), ".": (44, 32, 28), "~": (90, 96, 150), "^": (252, 104, 30)},
+            # dry bone
+            "ossuary": {"#": (178, 168, 142), ".": (84, 78, 64), "~": (86, 118, 150), "^": (214, 96, 46)},
+            # bioluminescent damp
+            "warren": {"#": (84, 132, 108), ".": (34, 58, 48), "~": (70, 168, 148), "^": (222, 104, 52)},
+            # moss over old stone
+            "ruins": {"#": (128, 134, 92), ".": (56, 62, 42), "~": (76, 128, 128), "^": (214, 98, 44)},
+            # corroded iron and standing water
+            "marsh": {"#": (134, 94, 62), ".": (58, 42, 30), "~": (78, 104, 82), "^": (226, 96, 40)},
+            # pale facets
+            "crystal": {"#": (152, 172, 204), ".": (56, 66, 88), "~": (96, 152, 220), "^": (220, 104, 60)},
         }
     )
     tile_jitter: float = 0.09  # +-9% per-tile brightness, hashed by position

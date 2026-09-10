@@ -43,6 +43,11 @@ def ca_walls(
     return walls
 
 
+def ca_step(walls: np.ndarray, wall_threshold: int) -> np.ndarray:
+    """One smoothing pass — exported so other generators can erode a floorplan."""
+    return _smooth(walls, wall_threshold)
+
+
 def _fill(rng: random.Random, width: int, height: int, fill_prob: float) -> np.ndarray:
     """Random walls at fill_prob (raster draw order), solid border."""
     rolls = np.fromiter(

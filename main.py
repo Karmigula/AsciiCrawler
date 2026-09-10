@@ -326,7 +326,9 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
             stale_factor=config.stale_brightness,
             stale_fraction=config.memory_stale_fraction,
             ghost_color=config.ghost_color,
-            color_for=lambda glyph, coord: terrain_color(glyph, coord, config),
+            color_for=lambda glyph, coord: terrain_color(
+                glyph, coord, config, world.biome_key_at(*coord)
+            ),
             ghost_color_for=lambda glyph: _thing_color(glyph, config),
             memory_tint=config.memory_tint_color,
             fresh_tint=config.fresh_tint,
@@ -345,6 +347,7 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
                 config,
                 tick=agent.tick_count,
                 ttl=mind.memory_ttl,
+                biome_for=lambda coord: world.biome_key_at(*coord),
             ),
         )
         screen.draw_glyph(

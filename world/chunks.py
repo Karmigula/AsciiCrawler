@@ -47,7 +47,8 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from config import Config, DEFAULT_CONFIG
-from world import gen_bsp, gen_cave, gen_cavern
+from world import gen_bsp, gen_cave, gen_cavern, gen_ruins
+from world.biomes import biome_at
 from sim.items import roll_for
 from world.populate import (
     ChunkContents,
@@ -124,6 +125,7 @@ class ChunkStore:
                 cx,
                 cy,
                 self._config,
+                allowed=biome_at(self.seed, cx, cy, self._config).monsters,
             )
             chunk = Chunk(cx, cy, tiles, contents)
             self._chunks[key] = chunk
@@ -143,6 +145,15 @@ class ChunkStore:
         for dy in range(-radius, radius + 1):
             for dx in range(-radius, radius + 1):
                 self.get_chunk(cx + dx, cy + dy)
+
+    def biome_at(self, x: int, y: int):
+        """The biome of the chunk containing a global tile."""
+        size = self._config.chunk_size
+        return biome_at(self.seed, x // size, y // size, self._config)
+
+    def biome_key_at(self, x: int, y: int) -> str:
+        """Just the key, for the renderer to look a palette up with."""
+        return self.biome_at(x, y).key
 
     def contents_at(self, x: int, y: int) -> ChunkContents:
         """The contents of the chunk containing global tile (x, y)."""
@@ -309,42 +320,79 @@ class ChunkStore:
         raise RuntimeError("no passable tile found in chunk (0, 0)")
 
 
+def _build_rooms(rng, size, params, config) -> np.ndarray:
+    grid = gen_bsp.generate(
+        rng,
+        size,
+        size,
+        params.get("min_partition", config.bsp_min_partition),
+        params.get("min_room", config.bsp_min_room),
+    )
+    return np.array([[int(tile) for tile in row] for row in grid], dtype=np.int8)
+
+
+def _build_cave(rng, size, params, config) -> np.ndarray:
+    return gen_cave.generate(
+        rng,
+        size,
+        size,
+        params.get("fill_prob", config.cave_fill_prob),
+        params.get("smooth_steps", config.cave_smooth_steps),
+        params.get("wall_threshold", config.cave_wall_threshold),
+    )
+
+
+def _build_cavern(rng, size, params, config) -> np.ndarray:
+    return gen_cavern.generate(
+        rng,
+        size,
+        size,
+        params.get("fill_prob", config.cavern_fill_prob),
+        params.get("smooth_steps", config.cavern_smooth_steps),
+        params.get("wall_threshold", config.cave_wall_threshold),
+        params.get("pool_chance", config.cavern_pool_chance),
+        params.get("pool_attempts", config.cavern_pool_attempts),
+        params.get("pool_min_size", config.cavern_pool_min_size),
+        params.get("pool_max_size", config.cavern_pool_max_size),
+        params.get("lava_share", config.cavern_lava_share),
+        (size // 2, size // 2),
+    )
+
+
+def _build_ruins(rng, size, params, config) -> np.ndarray:
+    return gen_ruins.generate(
+        rng,
+        size,
+        size,
+        params.get("min_partition", config.bsp_min_partition),
+        params.get("min_room", config.bsp_min_room),
+        params.get("fill_prob", config.cave_fill_prob),
+        params.get("smooth_steps", 3),
+        params.get("wall_threshold", config.cave_wall_threshold),
+    )
+
+
+_BUILDERS = {
+    "rooms": _build_rooms,
+    "cave": _build_cave,
+    "cavern": _build_cavern,
+    "ruins": _build_ruins,
+}
+
+
 def _generate_chunk(seed: int, cx: int, cy: int, config: Config) -> np.ndarray:
-    """The full chunk pipeline; pure function of (seed, cx, cy, config)."""
+    """The full chunk pipeline; pure function of (seed, cx, cy, config).
+
+    The biome decides the shape of the place, and it comes from the region the
+    chunk sits in rather than from its distance to the origin. Distance still
+    governs danger and loot, which is what lets any theme turn up at any depth
+    without flattening the difficulty curve.
+    """
     size = config.chunk_size
     rng = random.Random(_hash_ints(seed, cx, cy) % (1 << 63))
-    band = _band_for(seed, cx, cy, config)
-    if band == "bsp":
-        grid = gen_bsp.generate(
-            rng, size, size, config.bsp_min_partition, config.bsp_min_room
-        )
-        tiles = np.array(
-            [[int(tile) for tile in row] for row in grid], dtype=np.int8
-        )
-    elif band == "cave":
-        tiles = gen_cave.generate(
-            rng,
-            size,
-            size,
-            config.cave_fill_prob,
-            config.cave_smooth_steps,
-            config.cave_wall_threshold,
-        )
-    else:
-        tiles = gen_cavern.generate(
-            rng,
-            size,
-            size,
-            config.cavern_fill_prob,
-            config.cavern_smooth_steps,
-            config.cave_wall_threshold,
-            config.cavern_pool_chance,
-            config.cavern_pool_attempts,
-            config.cavern_pool_min_size,
-            config.cavern_pool_max_size,
-            config.cavern_lava_share,
-            (size // 2, size // 2),
-        )
+    biome = biome_at(seed, cx, cy, config)
+    builder = _BUILDERS.get(biome.builder, _build_cave)
+    tiles = builder(rng, size, biome.params, config)
     mid = size // 2
     tiles[mid, mid] = int(Tile.FLOOR)
     _drill_seam_corridors(tiles, seed, cx, cy, config)

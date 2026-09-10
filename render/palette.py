@@ -56,36 +56,31 @@ def _jitter(color: Color, amount: float) -> Color:
     )
 
 
-def biome_mix(distance: float, config) -> tuple[str, str, float]:
-    """(near band, far band, blend) for a distance from the world origin.
+def depth_shade(coord: Position, config) -> float:
+    """A brightness factor that falls off with distance from the origin.
 
-    Anchored on the same band edges the generator uses, so the colour changes
-    where the terrain does rather than at some second set of numbers that could
-    drift away from it.
+    The biome sets the hue now, so depth needs its own signal or every place
+    looks equally far from home. Kept small: it should read as "deeper", not
+    as "the lights are failing".
     """
-    home = float(config.band_bsp_max)
-    deep = float(config.band_cavern_min)
-    if distance <= home:
-        return "home", "home", 0.0
-    if distance <= deep:
-        return "home", "caves", (distance - home) / max(1.0, deep - home)
-    far = deep * 2.0
-    return "caves", "deep", min(1.0, (distance - deep) / max(1.0, far - deep))
+    reach = max(1.0, float(config.tier_distance_max))
+    far = min(1.0, math.hypot(coord[0], coord[1]) / reach)
+    return 1.0 - config.depth_dimming * far
 
 
-def terrain_color(glyph: str, coord: Position, config) -> Color:
-    """The unlit colour of one terrain tile, before fog dims it."""
-    x, y = coord
-    near_band, far_band, blend = biome_mix(math.hypot(x, y), config)
-    table = config.biome_colors
-    near = table.get(near_band, {}).get(glyph)
-    far = table.get(far_band, {}).get(glyph)
-    if near is None or far is None:
+def terrain_color(glyph: str, coord: Position, config, biome_key: str = "halls") -> Color:
+    """The unlit colour of one terrain tile, before fog dims it.
+
+    Coloured by which biome the tile is in rather than how far out it is.
+    Distance still shows, as a gentle darkening on top.
+    """
+    table = config.biome_colors.get(biome_key) or config.biome_colors.get("halls", {})
+    base = table.get(glyph)
+    if base is None:
         return config.floor_color
-    base = _lerp(near, far, blend)
-    # A little per-stone variation, hashed by position so it never shimmers.
     spread = config.tile_jitter
-    return _jitter(base, 1.0 - spread + 2 * spread * _hash01(x, y, 0x5F3A))
+    jitter = 1.0 - spread + 2 * spread * _hash01(coord[0], coord[1], 0x5F3A)
+    return _jitter(base, jitter * depth_shade(coord, config))
 
 
 def monster_color(glyph: str, config) -> Color:
@@ -102,7 +97,9 @@ def item_color(glyph: str, config) -> Color:
     return config.item_colors.get(glyph, config.ghost_rare_color)
 
 
-def background_color(glyph: str, coord: Position, tier: str, config) -> Color | None:
+def background_color(
+    glyph: str, coord: Position, tier: str, config, biome_key: str = "halls"
+) -> Color | None:
     """The wash behind a cell, or None to leave the window background showing.
 
     This is what actually carries the biome. A glyph is two lit pixels on a
@@ -117,7 +114,7 @@ def background_color(glyph: str, coord: Position, tier: str, config) -> Color | 
     strength = config.background_strength.get(tier, 0.0)
     if strength <= 0.0:
         return None
-    base = terrain_color(glyph, coord, config)
+    base = terrain_color(glyph, coord, config, biome_key)
     lit = (
         round(base[0] * strength),
         round(base[1] * strength),
@@ -128,7 +125,9 @@ def background_color(glyph: str, coord: Position, tier: str, config) -> Color | 
     return (max(lit[0], floor[0]), max(lit[1], floor[1]), max(lit[2], floor[2]))
 
 
-def background_grid(rows, origin: Position, visible, known, config, *, tick, ttl):
+def background_grid(
+    rows, origin: Position, visible, known, config, *, tick, ttl, biome_for=None
+):
     """The wash for a whole camera window, matching `fog_grid`'s tiers.
 
     Built from the same `tier_for` the fog uses, so the ground under a tile and
@@ -152,6 +151,7 @@ def background_grid(rows, origin: Position, visible, known, config, *, tick, ttl
                 stale_fraction=config.memory_stale_fraction,
                 age_of=age_of,
             )
-            row.append(background_color(glyph, coord, tier, config))
+            key = "halls" if biome_for is None else biome_for(coord)
+            row.append(background_color(glyph, coord, tier, config, key))
         grid.append(row)
     return grid
