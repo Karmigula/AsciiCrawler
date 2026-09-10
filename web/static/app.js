@@ -20,6 +20,7 @@ const canvas = typeof document !== "undefined" && document.getElementById("view"
 const ctx = canvas ? canvas.getContext("2d", { alpha: false }) : null;
 const statusLine = canvas && document.getElementById("status");
 const hudBox = canvas && document.getElementById("hud");
+const wornBox = canvas && document.getElementById("worn");
 const logBox = canvas && document.getElementById("log");
 const viewerBox = canvas && document.getElementById("viewers");
 
@@ -101,6 +102,9 @@ function draw(frame) {
   ctx.fillText("@", ax * cellW + cellW / 2, ay * cellH + cellH / 2);
 
   hudBox.replaceChildren(...frame.hud.map(([text, color]) => tinted(text, color)));
+  wornBox.replaceChildren(
+    ...(frame.worn || []).map(([text, color]) => tinted(text, color))
+  );
   logBox.replaceChildren(...frame.log.map(([text, color]) => tinted(text, color)));
   statusLine.textContent = `${frame.biome} — tick ${frame.tick.toLocaleString()}`;
   viewerBox.textContent =

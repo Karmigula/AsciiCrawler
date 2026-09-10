@@ -138,3 +138,35 @@ def test_the_app_imports_and_exposes_its_routes():
 
     paths = {route.path for route in app.routes}
     assert {"/", "/healthz", "/api/frame", "/ws"} <= paths
+
+
+def test_the_frame_says_what_the_agent_is_wearing():
+    """The desktop HUD has always shown this; the browser was missing it."""
+    from render.hud import equipment_lines
+
+    session = _session()
+    session.advance(400)
+
+    frame = serialize(
+        session.world,
+        session.agent,
+        session.config,
+        20,
+        10,
+        worn=equipment_lines(session.agent, session.config),
+    )
+
+    slots = " ".join(text for text, _ in frame["worn"])
+    assert "worn" in slots
+    for slot in ("weapon", "armor", "ring", "amulet"):
+        assert slot in slots, f"{slot} is missing from the worn panel"
+
+
+def test_the_worn_panel_is_optional():
+    """A caller that does not pass one should get an empty list, not a crash."""
+    session = _session()
+    session.advance(20)
+
+    frame = serialize(session.world, session.agent, session.config, 20, 10)
+
+    assert frame["worn"] == []

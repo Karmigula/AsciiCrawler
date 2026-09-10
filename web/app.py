@@ -23,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from dataclasses import replace
 
 from config import DEFAULT_CONFIG
-from render.hud import chronicle_lines, hud_lines
+from render.hud import chronicle_lines, equipment_lines, hud_lines
 from sim.session import Session
 from web.frame import serialize
 
@@ -104,6 +104,7 @@ def build_payload(session: Session, viewers: int) -> str:
         COLS,
         ROWS,
         hud=hud_lines(agent, len(session.world), wide, biome=(here.key, here.label)),
+        worn=equipment_lines(agent, wide),
         log=chronicle_lines(agent, wide),
         viewers=viewers,
     )

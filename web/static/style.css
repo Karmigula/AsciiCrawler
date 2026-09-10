@@ -74,6 +74,9 @@ pre {
   font: inherit;
 }
 
+/* The HUD block ends flush, so the sections below it need their own air. */
+#worn, #log { margin-top: 0.7rem; }
+
 .foot {
   margin: auto 0 0;
   display: flex;
