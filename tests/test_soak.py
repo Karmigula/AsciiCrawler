@@ -39,10 +39,13 @@ def test_a_hundred_thousand_ticks_of_everything_at_once():
     assert stats.kills > 0, stats
     assert stats.pickups > 0, stats
 
-    # Measured at 100k on seed 4242: 0 starved ticks, 532 tiles travelled,
-    # 38,561 peak memory against 528,130 records pruned, 1,939 kills, level 15.
-    # Before the review fixes this same run was starved for 82,278 of its
-    # 100,000 ticks and never got further than 350 tiles from spawn.
+    # Measured at 100k on seed 4242: 22 starved ticks, 545 tiles travelled,
+    # 47,888 peak memory against 467,236 records pruned, 2,061 kills, level 14.
+    # Two earlier states this guards against: starvation for 82,278 of 100,000
+    # ticks (fixed by the bump/plan correction), and an agent that stopped
+    # moving entirely at tick 20,000 - which this test could NOT see, because a
+    # frozen agent starves for neither reason it checks. Watching where the
+    # agent actually was is what caught that one.
 
 
 @pytest.mark.slow
