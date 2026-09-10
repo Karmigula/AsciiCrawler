@@ -26,9 +26,10 @@ python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
 ```
 
-Python 3.10 or newer. Two dependencies: **pygame-ce** and numpy — note the
-`-ce`, since plain `pygame` is a rival fork that installs a module by the
-same name and the two do not belong in one environment.
+Python 3.10 or newer. The game itself needs two packages: **pygame-ce** and
+numpy — note the `-ce`, since plain `pygame` is a rival fork that installs a
+module by the same name and the two do not belong in one environment.
+`requirements.txt` also carries uvicorn, which nothing imports yet.
 
 See [CHANGELOG.md](CHANGELOG.md) for what is in this release.
 

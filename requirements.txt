@@ -20,6 +20,12 @@ pygame-ce>=2.5,<3
 # flood fills and erosion passes on them wholesale.
 numpy>=1.24,<3
 
+# ASGI server. Nothing in the game imports it yet - there is no web or API
+# surface here at all - so it is listed against work that is coming rather
+# than against anything that runs today. `[standard]` pulls the C speedups
+# and the websocket/reload extras alongside it.
+uvicorn[standard]>=0.30,<1
+
 # --- development only; the game runs without these ---
 
 # 496 tests, plus the multi-world soaks behind `-m slow`.
