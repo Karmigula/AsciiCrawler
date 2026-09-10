@@ -10,6 +10,13 @@ With decay in play the belief-side metrics matter as much as the travel ones.
 `memory_peak` is the high-water mark of the memory dict: it is the assertion
 that forgetting actually bounds the agent's world model over a long run, which
 a final-tick reading alone would miss (a sweep could have just fired). And
+`moved_ticks` is the plainest health check there is: an agent that has stopped
+moving is broken, and it is worth measuring precisely because the other
+metrics cannot see it. Both freezes this harness failed to catch - a flight
+that could never end, and a trap in a dead end's only doorway - left every
+other number looking reasonable while the creature stood still for the rest of
+the run.
+
 `frontier_starved_ticks` counts ticks where the explorer yielded — it looked
 for somewhere to go and found no reachable frontier. Decay is supposed to keep
 recycling novelty, so a run that starves has lost the thing this phase exists
@@ -36,6 +43,7 @@ class SimStats:
     seed: int
     chunks_generated: int
     max_distance: int  # Chebyshev tiles from spawn, sampled every tick
+    moved_ticks: int  # ticks on which the agent actually changed tile
     memory_tiles: int  # total records (all terrains) in memory at the end
     memory_peak: int  # high-water mark of the same, sampled every tick
     pruned_tiles: int  # records dropped by the pruner across the run
@@ -65,11 +73,16 @@ def run_ticks(n: int, seed: int, config: Config = DEFAULT_CONFIG) -> SimStats:
     rng = random.Random(seed + 1)
     agent = AgentState(x=spawn[0], y=spawn[1])
     max_distance = 0
+    moved_ticks = 0
+    previous = (agent.x, agent.y)
     memory_peak = 0
     monsters_seen = 0
     starved = 0
     for _ in range(n):
         tick(agent, world, rng, config)
+        if (agent.x, agent.y) != previous:
+            moved_ticks += 1
+            previous = (agent.x, agent.y)
         distance = max(abs(agent.x - spawn[0]), abs(agent.y - spawn[1]))
         max_distance = max(max_distance, distance)
         memory_peak = max(memory_peak, len(agent.memory))
@@ -81,6 +94,7 @@ def run_ticks(n: int, seed: int, config: Config = DEFAULT_CONFIG) -> SimStats:
         seed=seed,
         chunks_generated=len(world),
         max_distance=max_distance,
+        moved_ticks=moved_ticks,
         memory_tiles=len(agent.memory),
         memory_peak=memory_peak,
         pruned_tiles=agent.pruned_total,

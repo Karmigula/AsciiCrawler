@@ -1,5 +1,7 @@
 """Running many worlds at once."""
 
+import pytest
+
 from config import DEFAULT_CONFIG
 from sim.soak import available_workers, run_many, summarise
 
@@ -48,3 +50,43 @@ def test_the_summary_aggregates_the_batch():
 
 def test_an_empty_batch_summarises_to_nothing():
     assert summarise([]) == {}
+
+
+def test_a_soak_notices_an_agent_that_stopped_moving():
+    """The metric that both missed freezes would have tripped.
+
+    A frozen agent starves for neither reason the other assertions check: its
+    memory stays small, it never runs out of frontier, and it quietly stands
+    still for the rest of the run.
+    """
+    result = run_many(600, [3], DEFAULT_CONFIG, workers=1)[0]
+    assert result.moved_ticks > result.ticks * 0.8, (
+        f"the agent moved on only {result.moved_ticks} of {result.ticks} ticks"
+    )
+
+
+def test_movement_is_counted_per_tick_not_per_step():
+    result = run_many(300, [1], DEFAULT_CONFIG, workers=1)[0]
+    assert 0 <= result.moved_ticks <= result.ticks
+
+
+@pytest.mark.slow
+def test_many_worlds_survive_a_long_run():
+    """Eight seeds rather than one. A single soak is one world's worth of luck,
+    and both freezes this suite once missed were seed-specific - they showed up
+    where a particular dungeon put a trap or penned the agent between monsters.
+
+    Affordable now that worlds run one per core: eight of these cost about what
+    one used to.
+    """
+    results = run_many(40_000, list(range(1, 9)), DEFAULT_CONFIG, workers=8)
+
+    assert len(results) == 8
+    for stats in results:
+        where = f"seed {stats.seed}"
+        assert stats.moved_ticks > stats.ticks * 0.8, f"{where} stopped moving"
+        assert stats.frontier_starved_ticks < stats.ticks // 50, f"{where} starved"
+        assert stats.memory_peak < 150_000, f"{where} memory unbounded"
+        assert stats.pruned_tiles > 0, f"{where} never forgot anything"
+        assert stats.max_distance > 150, f"{where} never got anywhere"
+        assert stats.kills > 0, f"{where} never fought"
