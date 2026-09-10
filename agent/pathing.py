@@ -50,6 +50,7 @@ class StepCosts:
     hazard: float = 12.0
     ice: float = 2.0
     haze: float = 5.0
+    slide_max: int = 0  # 0 models no slide: a step onto ice ends on that ice
 
     @classmethod
     def from_config(cls, config) -> "StepCosts":
@@ -57,14 +58,54 @@ class StepCosts:
             hazard=config.hazard_step_cost,
             ice=config.ice_step_cost,
             haze=config.haze_step_cost,
+            slide_max=config.ice_slide_max if config.model_ice_slides else 0,
         )
 
 
 DEFAULT_COSTS = StepCosts()
 
 
+def slide_landing(
+    memory: Memory, entry: Position, step: tuple[int, int], slide_max: int
+) -> Position:
+    """Where a step onto `entry` actually puts the agent, in belief.
+
+    Mirrors `sim.tick._slide`: while the tile underfoot is slippery the agent
+    keeps going the way it was already going, up to the cap, stopping at
+    anything it cannot enter. Belief is the only input, so ground the agent
+    has not seen stops the slide here even where the real floor would carry it
+    on - the plan then undershoots, which re-planning fixes, rather than
+    overshooting into ground nobody has looked at.
+
+    Monsters are not modelled. Physics stops a slide against a body, so the
+    agent sometimes lands short of the prediction; that is a collision, and
+    finding out about it by hitting something is the honest way round.
+    """
+    dx, dy = step
+    x, y = entry
+    for _ in range(max(0, slide_max)):
+        if memory.terrain((x, y)) is not Tile.ICE:
+            break
+        ahead = (x + dx, y + dy)
+        if not memory.believes_passable(ahead):
+            break
+        x, y = ahead
+    return (x, y)
+
+
 def _neighbors(memory: Memory, pos: Position, costs: StepCosts = DEFAULT_COSTS):
-    """Yield (neighbor, step_cost) over believed floors, corner-cut safe.
+    """Yield (landing, step_cost) over believed floors, corner-cut safe.
+
+    The yielded coord is where the agent *ends up*, which on ice is not the
+    tile it stepped into. Modelling that is what makes frozen ground planable:
+    a slide crosses several tiles inside a single tick, so it is fast travel
+    that happens to be hard to aim, and a planner that understands it will use
+    a frozen hall rather than creep along the rock beside it.
+
+    Cost is charged in ticks, not in tiles - one step is one tick however far
+    the ice carries it. `costs.ice` is then charged for *ending* a move on ice,
+    which is the part that is actually awkward: the next move from there is at
+    the mercy of the same physics.
 
     A tile the agent knows is trapped costs `costs.hazard` extra rather than
     being refused. Refusing them looks prudent and is a trap of its own: a
@@ -83,23 +124,30 @@ def _neighbors(memory: Memory, pos: Position, costs: StepCosts = DEFAULT_COSTS):
             memory.believes_passable((x + dx, y)) and memory.believes_passable((x, y + dy))
         ):
             continue
-        nxt = (x + dx, y + dy)
-        if not memory.believes_passable(nxt):
+        entry = (x + dx, y + dy)
+        if not memory.believes_passable(entry):
             continue
         step = _SQRT2 if dx != 0 and dy != 0 else 1.0
-        if memory.believes_hazard(nxt):
+        landing = (
+            slide_landing(memory, entry, (dx, dy), costs.slide_max)
+            if costs.slide_max and memory.terrain(entry) is Tile.ICE
+            else entry
+        )
+        if landing == pos:
+            continue  # a slide that returns you where you started is no move
+        if memory.believes_hazard(landing):
             step += costs.hazard
-        elif memory.terrain(nxt) is Tile.ICE:
-            # Ice is walkable but it takes the agent where it likes. Priced
-            # low: enough to prefer bare rock alongside a drift, not enough to
-            # refuse a frozen hall that has no way round.
+        elif memory.terrain(landing) is Tile.ICE:
+            # Ending a move on ice, priced low: enough to prefer bare rock
+            # alongside a drift, not enough to refuse a frozen hall that has
+            # no way round.
             step += costs.ice
-        elif memory.terrain(nxt) is Tile.HAZE:
+        elif memory.terrain(landing) is Tile.HAZE:
             # Fog is passable and costs hit points, so it is priced like a
             # detour rather than refused: worth crossing to get somewhere,
             # not worth wandering through.
             step += costs.haze
-        yield nxt, step
+        yield landing, step
 
 
 def astar(
@@ -116,9 +164,15 @@ def astar(
     """
     if not memory.believes_passable(start) or not memory.believes_passable(goal):
         return None
+    # One tick can cross several tiles on ice, so plain octile distance
+    # would overestimate and cost A* its optimality. Divide by the longest
+    # a single step can be: weaker guidance, still admissible.
+    reach = max(1, costs.slide_max + 1)
     bound = 8 * (len(memory) + 1)  # exceeds the whole graph; pure paranoia
     counter = 0
-    open_heap: list[tuple[float, float, int, Position]] = [(_octile(start, goal), 0.0, 0, start)]
+    open_heap: list[tuple[float, float, int, Position]] = [
+        (_octile(start, goal) / reach, 0.0, 0, start)
+    ]
     came_from: dict[Position, Position] = {}
     g_score: dict[Position, float] = {start: 0.0}
     closed: set[Position] = set()
@@ -138,7 +192,10 @@ def astar(
             g_score[nxt] = tentative
             came_from[nxt] = pos
             counter += 1
-            heapq.heappush(open_heap, (tentative + _octile(nxt, goal), tentative, counter, nxt))
+            heapq.heappush(
+                open_heap,
+                (tentative + _octile(nxt, goal) / reach, tentative, counter, nxt),
+            )
     return None
 
 
@@ -219,11 +276,33 @@ def distances(
 
 
 def rebuild_path(came_from: Mapping[Position, Position], goal: Position, start: Position) -> list[Position]:
-    """Walk the from-links back from goal; steps after start, goal included."""
+    """Walk the from-links back from goal; steps after start, goal included.
+
+    Search nodes are landing tiles, so two of them can be a slide apart rather
+    than a step apart. The tiles crossed in between are put back here, because
+    everything downstream - the physics, the overlay, the sanity check - reads
+    a plan as a run of adjacent cells. Slides are straight, so walking the gap
+    one cell at a time reproduces exactly the ground the agent will cover.
+    """
     if goal == start:
         return []
     path = [goal]
     while path[-1] in came_from and came_from[path[-1]] != start:
         path.append(came_from[path[-1]])
     path.reverse()
-    return path
+    return _fill_slides(start, path)
+
+
+def _fill_slides(start: Position, path: list[Position]) -> list[Position]:
+    """Put back the tiles a slide crossed, so every hop in the plan is a step."""
+    filled: list[Position] = []
+    here = start
+    for nxt in path:
+        dx, dy = nxt[0] - here[0], nxt[1] - here[1]
+        span = max(abs(dx), abs(dy))
+        if span > 1:
+            ux, uy = (dx > 0) - (dx < 0), (dy > 0) - (dy < 0)
+            filled.extend((here[0] + ux * i, here[1] + uy * i) for i in range(1, span))
+        filled.append(nxt)
+        here = nxt
+    return filled

@@ -282,3 +282,152 @@ def test_a_plan_crosses_fog_when_that_is_the_only_way():
 
     assert path is not None, "fog is passable, just unpleasant"
     assert (3, 1) in path
+
+
+# --- the planner's model of ice, and the physics it has to match ---
+
+
+def _random_ice_field(rng, size=9):
+    """A patch of floor, ice and rock, with a floor tile to start from."""
+    weights = [Tile.FLOOR, Tile.FLOOR, Tile.ICE, Tile.ICE, Tile.ICE, Tile.WALL]
+    field = {
+        (x, y): weights[rng.randrange(len(weights))]
+        for x in range(size)
+        for y in range(size)
+    }
+    field[(size // 2, size // 2)] = Tile.FLOOR
+    return field
+
+
+def test_the_planners_slide_prediction_matches_the_physics():
+    """Two implementations of one rule; the whole design rests on them agreeing.
+
+    `slide_landing` exists so a plan can say where a step really ends, and
+    `_slide` is what actually happens. If they ever disagree the agent plans
+    routes it cannot walk, so this walks a few hundred random steps over
+    random ice and demands the prediction land on the same tile every time.
+
+    Belief is loaded with the whole truth here on purpose: the two must agree
+    given the same information. Where the agent's memory is *wrong* the
+    prediction is allowed to be wrong with it, and re-planning sorts it out.
+    """
+    import random
+    from dataclasses import replace
+
+    from agent.memory import Memory
+    from agent.pathing import slide_landing
+    from agent.stats import Stats
+    from sim.tick import AgentState, MOVED, _try_step
+
+    rng = random.Random(20260910)
+    config = replace(DEFAULT_CONFIG, ice_slide_max=3)
+    checked = 0
+    for _ in range(120):
+        field = _random_ice_field(rng)
+        memory = Memory()
+        memory.observe(dict(field), tick=0)
+        world = TerrainWorld(field)
+        centre = (4, 4)
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (1, -1), (-1, 1)):
+            agent = AgentState(x=centre[0], y=centre[1])
+            agent.stats = Stats.starting(config)
+            agent.derived = _bundle(agent.stats)
+            entry = (centre[0] + dx, centre[1] + dy)
+            if _try_step(agent, entry, world, random.Random(1), config) != MOVED:
+                continue
+            predicted = slide_landing(memory, entry, (dx, dy), config.ice_slide_max)
+            assert predicted == (agent.x, agent.y), (
+                f"stepping {(dx, dy)} onto {entry}: planned {predicted}, "
+                f"physics landed {(agent.x, agent.y)}"
+            )
+            checked += 1
+    assert checked > 200, f"only {checked} legal steps exercised; test proves little"
+
+
+def test_a_plan_across_ice_is_still_a_run_of_single_steps():
+    """Search hops over a slide; everything downstream reads adjacent cells."""
+    from agent.pathing import _fill_slides
+
+    path = _fill_slides((0, 0), [(4, 0), (4, 3), (2, 5)])
+
+    assert path[-1] == (2, 5), "the destination survives the expansion"
+    here = (0, 0)
+    for step in path:
+        assert max(abs(step[0] - here[0]), abs(step[1] - here[1])) == 1, (
+            f"{here} -> {step} is not a single step"
+        )
+        here = step
+
+
+def test_a_slide_advances_the_plan_past_every_tile_it_crossed():
+    """One tick can cover four tiles; popping one entry leaves the plan behind.
+
+    Before the plan advanced by landing tile, a slide desynced it by its own
+    length: the next entry was several tiles away, physics refused it as a
+    non-step, and the plan was thrown away and rebuilt every time the agent
+    touched ice.
+    """
+    from dataclasses import replace
+
+    from agent.goals import ExploreGoal
+    from sim.tick import _advance_plan
+
+    config = replace(DEFAULT_CONFIG, ice_slide_max=3)
+    driver = ExploreGoal()
+    driver.path = [(1, 0), (2, 0), (3, 0), (4, 0), (5, 0)]
+
+    _advance_plan(driver, (3, 0), config)
+
+    assert driver.path == [(4, 0), (5, 0)], "the crossed tiles should be gone"
+
+
+def test_a_slide_that_ran_short_leaves_the_plan_pointing_at_the_right_place():
+    """A body in the way stops a slide early; the plan must survive that."""
+    from dataclasses import replace
+
+    from agent.goals import ExploreGoal
+    from sim.tick import _advance_plan
+
+    config = replace(DEFAULT_CONFIG, ice_slide_max=3)
+    driver = ExploreGoal()
+    driver.path = [(1, 0), (2, 0), (3, 0), (4, 0)]
+
+    _advance_plan(driver, (1, 0), config)  # slid nowhere at all
+
+    assert driver.path == [(2, 0), (3, 0), (4, 0)]
+
+
+def test_an_aware_planner_uses_a_frozen_hall_as_fast_travel():
+    """Ice crosses several tiles per tick, so it is quick, not merely awkward.
+
+    The unaware planner priced ice purely as a penalty and crept along the
+    rock beside it. Since a slide is one tick however far it carries, the
+    frozen lane is the faster way and the plan should take it.
+    """
+    import random
+    from dataclasses import replace
+
+    from agent.memory import Memory
+    from agent.pathing import StepCosts, astar
+
+    seen = {}
+    for x in range(12):
+        seen[(x, 0)] = Tile.ICE  # the frozen hall
+        seen[(x, 2)] = Tile.FLOOR  # bare rock, same length
+    seen[(0, 1)] = seen[(11, 1)] = Tile.FLOOR
+    memory = Memory()
+    memory.observe(seen, tick=0)
+
+    config = replace(DEFAULT_CONFIG, ice_slide_max=3, model_ice_slides=True)
+    costs = StepCosts.from_config(config)
+    plan = astar(memory, (0, 1), (11, 1), costs=costs)
+
+    assert plan is not None
+    on_ice = sum(1 for step in plan if memory.terrain(step) is Tile.ICE)
+    assert on_ice > 0, "the frozen lane is the fast one; the plan ignored it"
+    # The plan lists tiles, and a slide crosses several of them per tick, so
+    # its length measures distance rather than time. What says the planner
+    # understood the ice is that it left the rock lane alone.
+    assert not any(memory.terrain(step) is Tile.FLOOR and step[1] == 2 for step in plan), (
+        f"the plan crept along the rock instead of sliding: {plan}"
+    )

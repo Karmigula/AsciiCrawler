@@ -89,9 +89,17 @@ same:
 
 Eight generators back them: rooms, caves, caverns, eroded ruins, gridded
 stations, braided mazes, flooded causeways, and lattices. Two terrain types
-came with them — **ice**, which carries you a step past where you meant to
-stop, and **haze**, which is walkable and costs hit points, so a plan prices
-it as a detour rather than refusing it.
+came with them — **ice**, which carries you on past where you meant to stop,
+and **haze**, which is walkable and costs hit points, so a plan prices it as
+a detour rather than refusing it.
+
+**The agent plans ice as physics, not as a penalty.** A slide happens inside
+a single tick however far it runs, so a frozen hall is fast travel that is
+hard to aim — and the pathfinder searches over *landing* tiles rather than
+neighbours, which makes it use the ice instead of creeping along the rock
+beside it. The cost of a step is charged in ticks, and the only surcharge on
+ice is for *ending* a move there, since the next move from a drift is at the
+mercy of the same physics.
 
 ## Soaking many worlds at once
 

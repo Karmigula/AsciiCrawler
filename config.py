@@ -258,10 +258,11 @@ class Config:
     hazard_step_cost: float = 12.0
     # Ice carries you on. Capped, because a long enough slide across a frozen
     # hall stops being a hazard and starts being teleportation.
-    ice_slide_max: int = 1
+    ice_slide_max: int = 3
     haze_damage: int = 2  # per tick spent standing in it
     haze_step_cost: float = 5.0  # what a plan pays to route through fog
-    ice_step_cost: float = 2.0  # ...and what it pays to cross ice
+    ice_step_cost: float = 2.0  # ...and what it pays to END a move on ice
+    model_ice_slides: bool = True  # plan slides as physics, not as a penalty
 
     # fear: threat read off memory, never off world truth
     threat_radius: int = 10  # tiles; remembered monsters further out are ignored

@@ -19,9 +19,24 @@ regular lattices with pieces missing.
 
 ### Two new kinds of ground
 
-- **Ice** carries the agent a step past where it meant to stop.
+- **Ice** carries the agent on past where it meant to stop.
 - **Haze** is walkable and hurts, so routes price it as a detour rather than
   refusing it.
+
+### The agent understands ice now
+
+Sliding used to be something that happened *to* the plan: the agent stepped,
+the floor carried it somewhere else, and it re-planned. Ice was priced as a
+penalty and the agent crept along the rock beside a frozen hall.
+
+A slide takes one tick however far it runs, which makes ice the fastest ground
+in the game if you can aim it. The pathfinder now searches over the tile a
+step actually *ends* on rather than the neighbour it enters, so frozen halls
+get used as fast travel. Cost is charged in ticks rather than tiles, and the
+only surcharge left on ice is for finishing a move on it.
+
+Across sixteen worlds of 4,000 ticks, the agent reaches 571 tiles from spawn
+instead of 380, kills more (803 vs 730) and dies less (30 vs 40).
 
 ### Fixed
 

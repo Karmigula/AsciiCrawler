@@ -242,7 +242,7 @@ def _act(agent: AgentState, world, rng: random.Random, config: Config) -> None:
     if driver.path:
         outcome = _try_step(agent, driver.path[0], world, rng, config)
         if outcome == MOVED:
-            driver.path.pop(0)
+            _advance_plan(driver, (agent.x, agent.y), config)
         elif outcome == BLOCKED:
             driver.drop_plan()  # blocked: physics disagrees with belief
         # ATTACKED: the blow spent the tick but the body did not move, so the
@@ -282,6 +282,30 @@ def _wander_ok(agent: AgentState, dx: int, dy: int, allow_hazard: bool = False) 
     if not agent.memory.believes_passable(target):
         return False
     return allow_hazard or not agent.memory.believes_hazard(target)
+
+
+def _advance_plan(driver, landed: tuple[int, int], config: Config) -> None:
+    """Drop the plan up to wherever the agent actually ended up.
+
+    A step is one tick but not always one tile: ice carries the agent on, and
+    a slide-aware plan lists every tile it crosses. Popping a single entry per
+    move would leave the plan trailing behind the body by the length of the
+    slide, and the next step would be several tiles away - which physics
+    refuses, so the plan gets thrown away and rebuilt every time the agent
+    touches ice.
+
+    Looking for the landing tile rather than counting tiles means a slide that
+    ran short - into a monster, or into ground the agent had misremembered -
+    still leaves the plan pointing at the right place.
+    """
+    if not driver.path:
+        return
+    window = max(1, config.ice_slide_max + 1)
+    for index in range(min(window, len(driver.path))):
+        if driver.path[index] == landed:
+            del driver.path[: index + 1]
+            return
+    driver.path.pop(0)
 
 
 def _try_step(
