@@ -18,6 +18,26 @@ Position = tuple[int, int]
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
+def display_for_point(rects, x: int, y: int) -> int:
+    """Index of the display containing a point, or the nearest one.
+
+    Pure geometry, kept out of the class so it can be tested without a second
+    monitor - which is the whole difficulty with this corner of the code.
+    """
+    for index, (left, top, width, height) in enumerate(rects):
+        if left <= x < left + width and top <= y < top + height:
+            return index
+    if not rects:
+        return 0
+    # Nothing contains it: an offset layout, or a window dragged half off a
+    # screen. Pick the display whose centre is closest.
+    return min(
+        range(len(rects)),
+        key=lambda i: (rects[i][0] + rects[i][2] // 2 - x) ** 2
+        + (rects[i][1] + rects[i][3] // 2 - y) ** 2,
+    )
+
+
 WINDOWED = "windowed"
 BORDERLESS = "borderless"
 FULLSCREEN = "fullscreen"
@@ -36,6 +56,7 @@ class Screen:
         self._glyph_cache: dict[tuple[str, Color], pygame.Surface] = {}
         self._mode = WINDOWED
         self._windowed = (config.window_width, config.window_height)
+        self._display_bounds = self._probe_display_bounds()
         self._configure(self._windowed, pygame.RESIZABLE)
 
     def _configure(self, size: tuple[int, int], flags: int, display: int = 0) -> None:
@@ -64,24 +85,64 @@ class Screen:
             self._windowed = size
         self._configure(size, self._window.get_flags())
 
-    def _display_rects(self) -> list[tuple[int, int, int, int]]:
-        """(x, y, w, h) for each display, in index order.
-
-        SDL knows every display's true bounds; pygame exposes only their sizes,
-        so the origins are inferred by laying the displays out left to right in
-        index order. That is exactly right for the common case - monitors side
-        by side sharing a top edge - and wrong for stacked or offset ones,
-        where the window is treated as being on the primary display instead.
-        Degraded, not broken: fullscreen still fills a whole monitor.
-        """
+    def _desktop_sizes(self) -> list[tuple[int, int]]:
         try:
             sizes = pygame.display.get_desktop_sizes()
         except (AttributeError, pygame.error):
-            info = pygame.display.Info()
-            sizes = [(info.current_w, info.current_h)]
+            sizes = []
+        if sizes:
+            return sizes
+        info = pygame.display.Info()
+        return [(info.current_w, info.current_h)]
+
+    def _probe_display_bounds(self) -> list[tuple[int, int, int, int]] | None:
+        """Measure where each display actually is, once, at startup.
+
+        pygame reports display *sizes* but not their origins, and guessing that
+        monitors run left to right in index order is wrong for stacked or
+        offset arrangements. So measure instead: open a small hidden window on
+        each display, ask where it landed, and work backwards. SDL centres it,
+        so the display's origin is the window position minus half the leftover
+        space.
+
+        Done before the real window exists, so nothing flickers and it costs
+        nothing during play. Returns None if the probe cannot run, and the
+        caller falls back to the left-to-right guess.
+        """
+        sizes = self._desktop_sizes()
+        if len(sizes) <= 1:
+            return [(0, 0, sizes[0][0], sizes[0][1])]
+        probe = (64, 64)
+        flags = pygame.NOFRAME | getattr(pygame, "HIDDEN", 0)
+        bounds: list[tuple[int, int, int, int]] = []
+        try:
+            for index, (width, height) in enumerate(sizes):
+                pygame.display.set_mode(probe, flags, display=index)
+                position_x, position_y = pygame.display.get_window_position()
+                bounds.append(
+                    (
+                        position_x - (width - probe[0]) // 2,
+                        position_y - (height - probe[1]) // 2,
+                        width,
+                        height,
+                    )
+                )
+        except (AttributeError, TypeError, pygame.error):
+            return None
+        return bounds
+
+    def _display_rects(self) -> list[tuple[int, int, int, int]]:
+        """(x, y, w, h) for each display, in index order.
+
+        Measured at startup where that is possible. The fallback lays the
+        displays out left to right, which is right for monitors side by side
+        sharing a top edge and wrong for anything else.
+        """
+        if self._display_bounds:
+            return self._display_bounds
         rects = []
         x = 0
-        for width, height in sizes or [(self._width, self._height)]:
+        for width, height in self._desktop_sizes():
             rects.append((x, 0, width, height))
             x += width
         return rects
@@ -93,11 +154,9 @@ class Screen:
             window_x, window_y = pygame.display.get_window_position()
         except (AttributeError, pygame.error):
             return 0
-        centre_x = window_x + self._width // 2
-        for index, (x, _, width, _) in enumerate(rects):
-            if x <= centre_x < x + width:
-                return index
-        return 0
+        return display_for_point(
+            rects, window_x + self._width // 2, window_y + self._height // 2
+        )
 
     def _place(self, position: tuple[int, int]) -> None:
         """Move the window, if this pygame build can."""
@@ -122,7 +181,12 @@ class Screen:
             self._configure((width, height), pygame.NOFRAME, display=display)
             self._place((x, y))
         elif mode == BORDERLESS:
-            self._configure(self._windowed, pygame.NOFRAME, display=display)
+            # RESIZABLE as well as NOFRAME: dropping the border should not
+            # take the drag handles with it. Fullscreen keeps NOFRAME alone,
+            # since it already fills the display.
+            self._configure(
+                self._windowed, pygame.NOFRAME | pygame.RESIZABLE, display=display
+            )
             self._place(
                 (
                     x + max(0, (width - self._width) // 2),

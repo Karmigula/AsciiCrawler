@@ -43,8 +43,10 @@ Nobody plays it.
   it, and the creature keeps running while it is up, so *resume* resumes.
 - **A resizable window**, `F10` for a borderless window and `F11` for
   borderless fullscreen. Both land on the monitor the window was already on,
-  centred, rather than jumping to the primary one. Making the window bigger
-  shows more of the dungeon rather than magnifying it.
+  centred, rather than jumping to the primary one - the monitor layout is
+  measured at startup, so stacked and offset arrangements work too. Borderless
+  windows can still be resized. Making the window bigger shows more of the
+  dungeon rather than magnifying it.
 - **A HUD** with health, level, current goal, what it is wearing, and a rolling
   log of what just happened: *killed the rat*, *found a cruel sword*, *stepped
   in a trap*, *died in the dark*.
