@@ -2,6 +2,8 @@
 
 An autonomous `@` in an infinite dungeon. Nobody plays it — you watch it.
 
+<img width="1200" height="800" alt="python_n9lhxMAZDv" src="https://github.com/user-attachments/assets/e9e3504d-daf6-4c2f-ac8c-42bbd1a23f97" />
+
 The agent explores, fights, flees, loots, levels, dies, and starts again. It
 runs on beliefs rather than facts: it acts on what it remembers seeing, which
 means it can be wrong, and being wrong is where the interesting behaviour comes
