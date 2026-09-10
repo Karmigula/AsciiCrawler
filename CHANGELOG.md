@@ -41,8 +41,10 @@ Nobody plays it.
 
 - **A title screen** with block-letter art. `esc` from the world goes back to
   it, and the creature keeps running while it is up, so *resume* resumes.
-- **A resizable window**, and `F11` for borderless fullscreen. Making the
-  window bigger shows more of the dungeon rather than magnifying it.
+- **A resizable window**, `F10` for a borderless window and `F11` for
+  borderless fullscreen. Both land on the monitor the window was already on,
+  centred, rather than jumping to the primary one. Making the window bigger
+  shows more of the dungeon rather than magnifying it.
 - **A HUD** with health, level, current goal, what it is wearing, and a rolling
   log of what just happened: *killed the rat*, *found a cruel sword*, *stepped
   in a trap*, *died in the dark*.

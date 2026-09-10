@@ -18,6 +18,10 @@ Position = tuple[int, int]
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
+WINDOWED = "windowed"
+BORDERLESS = "borderless"
+FULLSCREEN = "fullscreen"
+
 
 class Screen:
     """A terminal-looking window rendering one centered glyph per grid cell."""
@@ -30,18 +34,23 @@ class Screen:
         self._hud_font = self._load_font(config.font_size - 2)
         self._title_font = self._load_font(config.menu_title_font_size)
         self._glyph_cache: dict[tuple[str, Color], pygame.Surface] = {}
-        self._fullscreen = False
+        self._mode = WINDOWED
         self._windowed = (config.window_width, config.window_height)
         self._configure(self._windowed, pygame.RESIZABLE)
 
-    def _configure(self, size: tuple[int, int], flags: int) -> None:
+    def _configure(self, size: tuple[int, int], flags: int, display: int = 0) -> None:
         """Open the window at a size and recompute the glyph grid for it.
 
         A bigger window shows more world rather than a magnified slice of it -
         the glyph size is what the font is, and stretching it would make an
         ascii grid look like a photograph of one.
         """
-        self._window = pygame.display.set_mode(size, flags)
+        try:
+            self._window = pygame.display.set_mode(size, flags, display=display)
+        except (TypeError, pygame.error):
+            # Older pygame builds have no `display` argument; the window then
+            # opens wherever SDL chooses and `_place` moves it afterwards.
+            self._window = pygame.display.set_mode(size, flags)
         self._width, self._height = self._window.get_size()
         cell = self._config.cell_size
         self._cols = max(1, self._width // cell)
@@ -51,47 +60,101 @@ class Screen:
 
     def resize(self, size: tuple[int, int]) -> None:
         """Handle the window being dragged to a new size."""
-        if not self._fullscreen:
+        if self._mode != FULLSCREEN:
             self._windowed = size
         self._configure(size, self._window.get_flags())
 
-    def _desktop_size(self) -> tuple[int, int]:
-        """The size of the display this window is on.
+    def _display_rects(self) -> list[tuple[int, int, int, int]]:
+        """(x, y, w, h) for each display, in index order.
 
-        `pygame.display.Info()` is the obvious call and the wrong one: once a
-        window exists it reports *that window's* size, so using it for
-        fullscreen resizes the window to the size it already is. Nothing
-        happens, which is exactly what it looked like.
+        SDL knows every display's true bounds; pygame exposes only their sizes,
+        so the origins are inferred by laying the displays out left to right in
+        index order. That is exactly right for the common case - monitors side
+        by side sharing a top edge - and wrong for stacked or offset ones,
+        where the window is treated as being on the primary display instead.
+        Degraded, not broken: fullscreen still fills a whole monitor.
         """
         try:
             sizes = pygame.display.get_desktop_sizes()
-            if sizes:
-                index = getattr(pygame.display, "get_display_index", lambda: 0)()
-                return sizes[min(index, len(sizes) - 1)]
+        except (AttributeError, pygame.error):
+            info = pygame.display.Info()
+            sizes = [(info.current_w, info.current_h)]
+        rects = []
+        x = 0
+        for width, height in sizes or [(self._width, self._height)]:
+            rects.append((x, 0, width, height))
+            x += width
+        return rects
+
+    def current_display(self) -> int:
+        """Which display the window is mostly on, by its centre point."""
+        rects = self._display_rects()
+        try:
+            window_x, window_y = pygame.display.get_window_position()
+        except (AttributeError, pygame.error):
+            return 0
+        centre_x = window_x + self._width // 2
+        for index, (x, _, width, _) in enumerate(rects):
+            if x <= centre_x < x + width:
+                return index
+        return 0
+
+    def _place(self, position: tuple[int, int]) -> None:
+        """Move the window, if this pygame build can."""
+        try:
+            pygame.display.set_window_position(position)
         except (AttributeError, pygame.error):
             pass
-        info = pygame.display.Info()  # last resort, and only correct pre-window
-        return info.current_w, info.current_h
+
+    def _set_mode(self, mode: str) -> None:
+        """Switch between windowed, borderless-windowed and fullscreen.
+
+        Both borderless modes are placed explicitly on the display the window
+        was already on, rather than left wherever SDL puts a new window. A
+        borderless window that jumps to the primary monitor is worse than no
+        borderless mode at all for something meant to sit on a second screen.
+        """
+        display = self.current_display()
+        rects = self._display_rects()
+        x, y, width, height = rects[min(display, len(rects) - 1)]
+        self._mode = mode
+        if mode == FULLSCREEN:
+            self._configure((width, height), pygame.NOFRAME, display=display)
+            self._place((x, y))
+        elif mode == BORDERLESS:
+            self._configure(self._windowed, pygame.NOFRAME, display=display)
+            self._place(
+                (
+                    x + max(0, (width - self._width) // 2),
+                    y + max(0, (height - self._height) // 2),
+                )
+            )
+        else:
+            self._configure(self._windowed, pygame.RESIZABLE, display=display)
+            self._place(
+                (
+                    x + max(0, (width - self._width) // 2),
+                    y + max(0, (height - self._height) // 2),
+                )
+            )
 
     def toggle_fullscreen(self) -> None:
-        """Borderless fullscreen at the desktop resolution, and back again.
+        """Borderless fullscreen filling the display the window is on.
 
         Borderless rather than exclusive: this is a thing to leave running on a
         second monitor, and an exclusive mode switch fights every other window
         on the machine for the display.
         """
-        self._fullscreen = not self._fullscreen
-        if self._fullscreen:
-            # Pin to the top-left corner. A borderless window the size of the
-            # desktop that SDL has centred hangs off the bottom-right by
-            # whatever the title bar would have been.
-            os.environ["SDL_VIDEO_WINDOW_POS"] = "0,0"
-            self._configure(self._desktop_size(), pygame.NOFRAME)
-        else:
-            os.environ.pop("SDL_VIDEO_WINDOW_POS", None)
-            os.environ["SDL_VIDEO_CENTERED"] = "1"
-            self._configure(self._windowed, pygame.RESIZABLE)
-            os.environ.pop("SDL_VIDEO_CENTERED", None)
+        self._set_mode(WINDOWED if self._mode == FULLSCREEN else FULLSCREEN)
+
+    def toggle_borderless(self) -> None:
+        """A borderless window at the windowed size, centred on its display."""
+        self._set_mode(WINDOWED if self._mode == BORDERLESS else BORDERLESS)
+
+    @property
+    def mode(self) -> str:
+        """One of `windowed`, `borderless`, `fullscreen`."""
+        return self._mode
 
     @property
     def size(self) -> tuple[int, int]:

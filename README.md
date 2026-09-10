@@ -32,7 +32,8 @@ See [CHANGELOG.md](CHANGELOG.md) for what is in this release.
 | `h` | toggle HUD |
 | `n` | new world (fresh seed, fresh creature) |
 | `p` | screenshot |
-| `F11` | borderless fullscreen |
+| `F10` | borderless window |
+| `F11` | borderless fullscreen (fills the screen it is on) |
 
 The overlays are the interesting part: they answer "why is it doing that?" by
 drawing what the agent *believes* rather than what is true.

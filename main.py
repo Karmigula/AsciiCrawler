@@ -16,6 +16,7 @@ Controls
     1 2 3      speed 1x / 4x / 16x
     F1..F5     overlays: fov, memory age, threat, plan, frontier
     h          toggle the HUD
+    F10        borderless window
     F11        borderless fullscreen
     n          new world (fresh seed, fresh creature)
     p          screenshot
@@ -93,6 +94,8 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_F11:
                         screen.toggle_fullscreen()
+                    elif event.key == pygame.K_F10:
+                        screen.toggle_borderless()
                     elif event.key == pygame.K_ESCAPE:
                         running = False
                     elif event.key in (pygame.K_UP, pygame.K_w):
@@ -125,6 +128,8 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_F11:
                     screen.toggle_fullscreen()
+                elif event.key == pygame.K_F10:
+                    screen.toggle_borderless()
                 elif event.key == pygame.K_ESCAPE:
                     in_menu = True  # back to the title screen, not out of the game
                 elif event.key == pygame.K_SPACE:

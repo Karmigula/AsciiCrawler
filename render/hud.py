@@ -176,7 +176,8 @@ def help_lines(config) -> list[Line]:
         ("F1 fov  F2 age  F3 threat", config.hud_dim_color),
         ("F4 plan F5 frontier", config.hud_dim_color),
         ("n new world   p screenshot", config.hud_dim_color),
-        ("F11 fullscreen   esc menu", config.hud_dim_color),
+        ("F10 borderless  F11 fullscreen", config.hud_dim_color),
+        ("esc menu", config.hud_dim_color),
     ]
 
 

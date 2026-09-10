@@ -85,6 +85,7 @@ def menu_lines(selected: int, seed: int, config, running: bool = False) -> list[
     lines.append(("", config.menu_dim_color))
     lines.append((f"world seed {seed}", config.menu_dim_color))
     lines.append(("up/down choose    enter start    esc quit", config.menu_dim_color))
+    lines.append(("F10 borderless    F11 fullscreen", config.menu_dim_color))
     return lines
 
 
