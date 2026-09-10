@@ -367,32 +367,26 @@ def test_a_slide_advances_the_plan_past_every_tile_it_crossed():
     non-step, and the plan was thrown away and rebuilt every time the agent
     touched ice.
     """
-    from dataclasses import replace
-
     from agent.goals import ExploreGoal
     from sim.tick import _advance_plan
 
-    config = replace(DEFAULT_CONFIG, ice_slide_max=3)
     driver = ExploreGoal()
     driver.path = [(1, 0), (2, 0), (3, 0), (4, 0), (5, 0)]
 
-    _advance_plan(driver, (3, 0), config)
+    _advance_plan(driver, (3, 0))
 
     assert driver.path == [(4, 0), (5, 0)], "the crossed tiles should be gone"
 
 
 def test_a_slide_that_ran_short_leaves_the_plan_pointing_at_the_right_place():
     """A body in the way stops a slide early; the plan must survive that."""
-    from dataclasses import replace
-
     from agent.goals import ExploreGoal
     from sim.tick import _advance_plan
 
-    config = replace(DEFAULT_CONFIG, ice_slide_max=3)
     driver = ExploreGoal()
     driver.path = [(1, 0), (2, 0), (3, 0), (4, 0)]
 
-    _advance_plan(driver, (1, 0), config)  # slid nowhere at all
+    _advance_plan(driver, (1, 0))  # slid nowhere at all
 
     assert driver.path == [(2, 0), (3, 0), (4, 0)]
 
@@ -431,3 +425,48 @@ def test_an_aware_planner_uses_a_frozen_hall_as_fast_travel():
     assert not any(memory.terrain(step) is Tile.FLOOR and step[1] == 2 for step in plan), (
         f"the plan crept along the rock instead of sliding: {plan}"
     )
+
+
+def test_a_plan_survives_a_landing_it_did_not_predict():
+    """An overshot route still mostly goes somewhere worth going.
+
+    Clearing the plan whenever the landing was a surprise reads as the tidy
+    thing to do and measured worse: 493 tiles from spawn across sixteen worlds
+    against 526 for keeping it. If the agent ended up anywhere along the
+    route, the rest of the route still leads where it was headed.
+    """
+    from agent.goals import ExploreGoal
+    from sim.tick import _advance_plan
+
+    driver = ExploreGoal()
+    driver.path = [(1, 0), (2, 0), (3, 0), (4, 0), (5, 0), (6, 0)]
+
+    _advance_plan(driver, (5, 0))  # slid far past the tile it aimed at
+
+    assert driver.path == [(6, 0)], "the plan should resume from the landing"
+
+
+def test_a_frontier_tile_stranded_mid_drift_is_still_worth_going_to():
+    """A slide crosses it, so the agent sees it - which is all exploring is.
+
+    Nothing can stop in the middle of a drift, so these tiles were absent from
+    every sweep and the explorer called the whole neighbourhood unreachable
+    and went back to wandering: 652 starved ticks across eight worlds.
+    """
+    from dataclasses import replace
+
+    from agent.memory import Memory
+    from agent.pathing import StepCosts, distances
+
+    lane = {(x, 0): Tile.ICE for x in range(1, 6)}
+    lane[(0, 0)] = Tile.FLOOR
+    memory = Memory()
+    memory.observe(lane, tick=0)
+
+    config = replace(DEFAULT_CONFIG, ice_slide_max=3, model_ice_slides=True)
+    cost, came_from = distances(
+        memory, (0, 0), costs=StepCosts.from_config(config)
+    )
+
+    assert (2, 0) in cost, "a tile the slide passes over should be reachable"
+    assert (2, 0) in came_from, "and it should be plannable to"

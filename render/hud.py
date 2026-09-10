@@ -45,8 +45,20 @@ def health_color(value: int, maximum: int, config) -> tuple[int, int, int]:
     return config.hud_bad_color
 
 
-def hud_lines(agent, world_size: int, config, speed: int = 1, paused: bool = False) -> list[Line]:
-    """Build the HUD as (text, colour) lines, top to bottom, clipped to fit."""
+def hud_lines(
+    agent,
+    world_size: int,
+    config,
+    speed: int = 1,
+    paused: bool = False,
+    biome: tuple[str, str] | None = None,
+) -> list[Line]:
+    """Build the HUD as (text, colour) lines, top to bottom, clipped to fit.
+
+    `biome` is the (key, label) of the ground under the agent, handed in
+    rather than looked up: this module is given state and does not go asking
+    the world for any.
+    """
     stats = agent.stats
     derived = agent.derived
     if stats is None or derived is None:
@@ -69,6 +81,9 @@ def hud_lines(agent, world_size: int, config, speed: int = 1, paused: bool = Fal
     )
     lines.append((f"build  {archetype(derived, config)}", config.hud_accent_color))
     lines.append((f"goal   {agent.goal_name}", _goal_color(agent.goal_name, config)))
+    if biome is not None:
+        key, label = biome
+        lines.append((f"biome  {label}", _biome_color(key, config)))
     lines.append(("", config.hud_color))
     lines.append(
         (
@@ -101,6 +116,28 @@ def hud_lines(agent, world_size: int, config, speed: int = 1, paused: bool = Fal
     # Clip at the end rather than per line: a build label can name four
     # synergies and run off the panel just as easily as an item name can.
     return [(fit(text, config.hud_max_chars), colour) for text, colour in lines]
+
+
+_BIOME_LABEL_FLOOR = 190  # dimmest a label's strongest channel may be
+
+
+def _biome_color(key: str, config) -> tuple[int, int, int]:
+    """The biome's own hue, lifted until it reads as text.
+
+    Wall colour is the most characteristic thing a biome has - it is what the
+    place looks like from across the room. Straight off the palette it is far
+    too dark for a panel, though, since it was chosen to sit behind lit
+    glyphs. So the hue is kept and the brightness is not: scale until the
+    strongest channel is bright enough to read, which lifts a dim biome a long
+    way and leaves an already-bright one alone.
+    """
+    table = config.biome_colors.get(key) or config.biome_colors.get("halls", {})
+    colour = table.get("#", config.hud_accent_color)
+    brightest = max(colour) or 1
+    if brightest >= _BIOME_LABEL_FLOOR:
+        return colour
+    lift = _BIOME_LABEL_FLOOR / brightest
+    return tuple(min(255, round(channel * lift)) for channel in colour)
 
 
 def _goal_color(goal: str, config) -> tuple[int, int, int]:

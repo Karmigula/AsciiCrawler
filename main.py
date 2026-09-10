@@ -354,7 +354,17 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
             config.agent_glyph, agent.x, agent.y, camera, config.agent_color
         )
         if show_hud:
-            screen.draw_panel(hud_lines(agent, len(world), config, speed, paused))
+            here = world.biome_at(agent.x, agent.y)
+            screen.draw_panel(
+                hud_lines(
+                    agent,
+                    len(world),
+                    config,
+                    speed,
+                    paused,
+                    biome=(here.key, here.label),
+                )
+            )
             # Both, not one or the other: they sit in different corners, and
             # the bag was never a reason to stop telling you what just
             # happened. The bag yields if the window is too short for both.

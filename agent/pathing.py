@@ -94,7 +94,7 @@ def slide_landing(
 
 
 def _neighbors(memory: Memory, pos: Position, costs: StepCosts = DEFAULT_COSTS):
-    """Yield (landing, step_cost) over believed floors, corner-cut safe.
+    """Yield (landing, step_cost, crossed) over believed floors, corner-cut safe.
 
     The yielded coord is where the agent *ends up*, which on ice is not the
     tile it stepped into. Modelling that is what makes frozen ground planable:
@@ -106,6 +106,11 @@ def _neighbors(memory: Memory, pos: Position, costs: StepCosts = DEFAULT_COSTS):
     the ice carries it. `costs.ice` is then charged for *ending* a move on ice,
     which is the part that is actually awkward: the next move from there is at
     the mercy of the same physics.
+
+    `crossed` is the ground a slide passed over on the way. The agent cannot
+    stop on any of it, but it does see it go by, which is the whole of what
+    exploring a tile means here - so callers that care about coverage rather
+    than about standing room get told about it.
 
     A tile the agent knows is trapped costs `costs.hazard` extra rather than
     being refused. Refusing them looks prudent and is a trap of its own: a
@@ -135,6 +140,10 @@ def _neighbors(memory: Memory, pos: Position, costs: StepCosts = DEFAULT_COSTS):
         )
         if landing == pos:
             continue  # a slide that returns you where you started is no move
+        span = max(abs(landing[0] - x), abs(landing[1] - y))
+        crossed = tuple(
+            (x + dx * i, y + dy * i) for i in range(1, span)
+        )
         if memory.believes_hazard(landing):
             step += costs.hazard
         elif memory.terrain(landing) is Tile.ICE:
@@ -147,7 +156,7 @@ def _neighbors(memory: Memory, pos: Position, costs: StepCosts = DEFAULT_COSTS):
             # detour rather than refused: worth crossing to get somewhere,
             # not worth wandering through.
             step += costs.haze
-        yield landing, step
+        yield landing, step, crossed
 
 
 def astar(
@@ -185,7 +194,7 @@ def astar(
         closed.add(pos)
         if len(closed) > bound:
             return None
-        for nxt, step in _neighbors(memory, pos, costs):
+        for nxt, step, _crossed in _neighbors(memory, pos, costs):
             tentative = g + step
             if nxt in closed or (nxt in g_score and g_score[nxt] <= tentative):
                 continue
@@ -222,6 +231,12 @@ def distances(
     unreachable in belief never close, so the sweep then ends the way it
     always did, by exhausting the reachable component.
 
+    Tiles a slide crosses are reported too, at the cost of the slide that
+    passes over them, but only where nothing better reached them. Standing on
+    one is impossible; seeing one is not, and a frontier tile stranded in the
+    middle of a drift is otherwise unreachable forever - the agent gave up on
+    the whole neighbourhood and went back to wandering.
+
     `stop_after` ends the sweep once that many targets have settled, rather
     than waiting for all of them. The caller only needs a handful of reachable
     candidates to choose between, and Dijkstra settles them nearest first, so
@@ -250,6 +265,11 @@ def distances(
     came_from: dict[Position, Position] = {}
     closed: set[Position] = set()
     counter = 0
+    # Ground a slide crosses is kept to one side until the sweep is over. It
+    # cannot be stood on, so it must never be expanded as a node or used to
+    # reach anywhere else; it is only ever a place the agent gets a look at.
+    passed: dict[Position, float] = {}
+    passed_from: dict[Position, Position] = {}
     while open_heap:
         if remaining is not None and not remaining:
             break
@@ -264,14 +284,22 @@ def distances(
             settled_targets += 1
             if stop_after is not None and settled_targets >= stop_after:
                 break
-        for nxt, step in _neighbors(memory, pos, costs):
+        for nxt, step, crossed in _neighbors(memory, pos, costs):
             tentative = g + step
+            for tile in crossed:
+                if tile not in passed or passed[tile] > tentative:
+                    passed[tile] = tentative
+                    passed_from[tile] = pos
             if nxt in closed or (nxt in cost and cost[nxt] <= tentative):
                 continue
             cost[nxt] = tentative
             came_from[nxt] = pos
             counter += 1
             heapq.heappush(open_heap, (tentative, counter, nxt))
+    for tile, value in passed.items():
+        if tile not in cost:
+            cost[tile] = value
+            came_from[tile] = passed_from[tile]
     return cost, came_from
 
 

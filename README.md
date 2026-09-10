@@ -93,6 +93,9 @@ came with them — **ice**, which carries you on past where you meant to stop,
 and **haze**, which is walkable and costs hit points, so a plan prices it as
 a detour rather than refusing it.
 
+The HUD names the biome the agent is standing in, under the build and goal
+lines, tinted with that biome's own colour.
+
 **The agent plans ice as physics, not as a penalty.** A slide happens inside
 a single tick however far it runs, so a frozen hall is fast travel that is
 hard to aim — and the pathfinder searches over *landing* tiles rather than

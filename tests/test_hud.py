@@ -203,3 +203,36 @@ def test_bag_lines_stay_inside_the_panel():
     agent.backpack = [_spare("ring", "sickly", "farsighted", "vampiric", "curious")]
     for text, _ in bag_lines(agent, DEFAULT_CONFIG):
         assert len(text) <= DEFAULT_CONFIG.hud_max_chars
+
+
+def test_the_hud_names_the_ground_under_the_agent():
+    body = _text(hud_lines(_running_agent(), 3, DEFAULT_CONFIG, biome=("frozen", "the frozen deep")))
+
+    assert "the frozen deep" in body
+
+
+def test_the_biome_line_sits_under_build_and_goal():
+    lines = _text(hud_lines(_running_agent(), 3, DEFAULT_CONFIG, biome=("halls", "quarried halls"))).splitlines()
+    labelled = [i for i, line in enumerate(lines) if line.startswith(("build", "goal", "biome"))]
+
+    assert [lines[i].split()[0] for i in labelled] == ["build", "goal", "biome"]
+
+
+def test_the_hud_still_works_with_no_biome_to_report():
+    """The menu and the tests both build a HUD before any world exists."""
+    body = _text(hud_lines(_running_agent(), 3, DEFAULT_CONFIG))
+
+    assert "biome" not in body
+
+
+def test_every_biome_label_is_readable_and_fits_the_panel():
+    """A dark biome colour was chosen to sit behind glyphs, not to be text."""
+    from render.hud import _biome_color
+    from world.biomes import BIOMES
+
+    for biome in BIOMES:
+        line = f"biome  {biome.label}"
+        assert len(line) <= DEFAULT_CONFIG.hud_max_chars, f"{line!r} overruns the panel"
+        assert max(_biome_color(biome.key, DEFAULT_CONFIG)) >= 190, (
+            f"{biome.key} label is too dark to read"
+        )

@@ -35,8 +35,19 @@ step actually *ends* on rather than the neighbour it enters, so frozen halls
 get used as fast travel. Cost is charged in ticks rather than tiles, and the
 only surcharge left on ice is for finishing a move on it.
 
-Across sixteen worlds of 4,000 ticks, the agent reaches 571 tiles from spawn
-instead of 380, kills more (803 vs 730) and dies less (30 vs 40).
+Ground a slide crosses counts as explored, too. Nothing can stop in the
+middle of a drift, so a frontier tile stranded there used to be unreachable
+forever — the explorer wrote off the whole neighbourhood and went back to
+wandering. The agent sees those tiles go past, which is all exploring one
+means, so routes now report them.
+
+Across sixteen worlds of 4,000 ticks, the agent reaches 618 tiles from spawn
+instead of 380, kills more (824 vs 730), and never runs out of places to go.
+
+### The HUD names where you are
+
+A `biome` line under `build` and `goal`, in that biome's own colour — pale
+blue in the frozen deep, green in the fungal warren.
 
 ### Fixed
 
