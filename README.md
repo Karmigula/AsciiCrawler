@@ -8,8 +8,10 @@ means it can be wrong, and being wrong is where the interesting behaviour comes
 from. It will flee a troll that wandered off ten minutes ago, walk into one
 that arrived after it looked away, and re-explore ground it has forgotten.
 
+Double-click `run.bat`, or:
+
 ```
-python main.py
+.venv\Scripts\python.exe main.py
 ```
 
 ## Controls
