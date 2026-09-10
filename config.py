@@ -114,6 +114,10 @@ class Config:
 
     # title screen
     soak_workers: int = 0  # 0 = one per core; used by the parallel soak runner
+    # On death, keep the world (the creature starts again knowing where it has
+    # been, and its gear is still on the floor) or roll a fresh one.
+    new_world_on_death: bool = False
+    soak_ticks: int = 3000  # per world, when soaking from the menu
     menu_title_font_size: int = 22  # the block letters get their own size
     menu_title_color: tuple[int, int, int] = (214, 170, 92)
     menu_text_color: tuple[int, int, int] = (206, 206, 216)

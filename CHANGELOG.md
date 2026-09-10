@@ -63,8 +63,14 @@ Nobody plays it.
 
 ### Settings
 
-- **A settings screen** on the title menu: soak workers, starting speed, how
-  strongly the biome tints the ground, and moss on or off.
+- **A settings screen** on the title menu: soak workers, starting speed, what
+  happens on death, how strongly the biome tints the ground, and moss on or
+  off. Settings are remembered between runs.
+- **On death, keep the world or roll a new one.** Keeping it is the default:
+  the creature starts again knowing where it has been, with its gear still
+  lying where it fell.
+- **Soak from the menu**, without a terminal. It runs one world per core and
+  flags in red any world where the agent stalled or ran out of places to go.
 
 ### Under the hood
 

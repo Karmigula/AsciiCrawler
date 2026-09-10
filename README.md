@@ -33,6 +33,7 @@ See [CHANGELOG.md](CHANGELOG.md) for what is in this release.
 | `n` | new world (fresh seed, fresh creature) |
 | `p` | screenshot |
 | `F10` | borderless window |
+| menu | settings, and a soak you can run without a terminal |
 | `F11` | borderless fullscreen (fills the screen it is on) |
 
 The overlays are the interesting part: they answer "why is it doing that?" by
@@ -86,6 +87,14 @@ python -m sim.soak 2000 8 8      # ticks, worlds, workers
 
 Measured on a 24-core machine: 8 worlds x 3000 ticks took 70s on one worker
 and 15s on eight, with identical results.
+
+The worker count set in the settings screen is saved to `settings.json` and is
+what this command uses by default. The same screen can run a soak itself, if
+you would rather not use a terminal.
+
+More worlds is about coverage, not speed. The last real bug here was found by
+soaking eight seeds at once: two of them were starved for most of their run
+while the single seed I had been testing looked perfectly healthy.
 
 ## Tests
 

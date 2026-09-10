@@ -36,21 +36,25 @@ from agent.fov import compute_fov
 from config import DEFAULT_CONFIG, Config
 from render.fog import fog_grid
 from render.hud import chronicle_lines, equipment_lines, help_lines, hud_lines
+import settings_store
 from render.menu import (
     ENTRIES,
     TITLE_ROWS,
     adjust,
     apply_settings,
+    apply_stored,
     default_settings,
     menu_lines,
     move_selection,
     settings_lines,
+    soak_lines,
+    stored_values,
 )
 from render.flourish import speckle_moss
 from render.palette import background_grid, item_color, monster_color, terrain_color
 from render.overlays import OVERLAY_NAMES, apply_overlay
 from render.screen import Screen
-from sim.soak import available_workers
+from sim.soak import available_workers, run_many
 from sim.tick import AgentState, tick
 from world.chunks import ChunkStore
 from world.tiles import Tile
@@ -94,10 +98,53 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
     selected = 0
     setting_selected = 0
     settings = default_settings(config, available_workers())
+    apply_stored(settings, settings_store.load_values())
+    config = apply_settings(settings, config)
+    speed_index = _speed_index_for(settings, config)
+    soak_results = None
+    soaking = False
+    deaths_seen = 0
 
     while running:
         dt = clock.tick(config.max_fps) / 1000.0
         accumulator = min(accumulator + dt, config.max_frame_seconds)
+
+        if soaking:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.VIDEORESIZE:
+                    screen.resize(event.size)
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    soaking = False
+            if soak_results is None:
+                workers = config.soak_workers or available_workers()
+                screen.draw_centered(
+                    soak_lines(
+                        f"running {workers} worlds x {config.soak_ticks} ticks"
+                        " - the window will not respond until they finish",
+                        None,
+                        config,
+                    ),
+                    big_lines=5,
+                )
+                screen.present()
+                soak_results = run_many(
+                    config.soak_ticks,
+                    list(range(1, workers + 1)),
+                    config,
+                    workers=workers,
+                )
+            screen.draw_centered(
+                soak_lines(
+                    f"{len(soak_results)} worlds, {config.soak_ticks} ticks each",
+                    soak_results,
+                    config,
+                ),
+                big_lines=5,
+            )
+            screen.present()
+            continue
 
         if in_settings:
             for event in pygame.event.get():
@@ -116,13 +163,12 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
                         setting_selected = (setting_selected - 1) % len(settings)
                     elif event.key in (pygame.K_DOWN, pygame.K_s):
                         setting_selected = (setting_selected + 1) % len(settings)
-                    elif event.key in (pygame.K_LEFT, pygame.K_a):
-                        adjust(settings, setting_selected, -1)
-                        config = apply_settings(settings, config)
-                    elif event.key in (pygame.K_RIGHT, pygame.K_d):
-                        adjust(settings, setting_selected, 1)
+                    elif event.key in (pygame.K_LEFT, pygame.K_a, pygame.K_RIGHT, pygame.K_d):
+                        step = -1 if event.key in (pygame.K_LEFT, pygame.K_a) else 1
+                        adjust(settings, setting_selected, step)
                         config = apply_settings(settings, config)
                         speed_index = _speed_index_for(settings, config)
+                        settings_store.save_values(stored_values(settings))
             screen.draw_centered(
                 settings_lines(settings, setting_selected, config), big_lines=5
             )
@@ -152,6 +198,9 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
                             running = False
                         elif choice == "settings":
                             in_settings = True
+                        elif choice == "soak":
+                            soaking = True
+                            soak_results = None
                         else:
                             if choice == "new world" or agent is None:
                                 if choice == "new world" and agent is not None:
@@ -203,6 +252,17 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
                 for _ in range(speed):
                     tick(agent, world, rng, config)
             accumulator -= tick_duration
+
+        if should_restart(config, agent.deaths, deaths_seen):
+            # Death is where a run ends, if that is how it has been set up:
+            # a new seed rather than the same dungeon with the body's gear
+            # still lying in it.
+            seed += 1
+            world, agent, rng = _new_world(config, seed)
+            deaths_seen = 0
+            accumulator = 0.0
+            continue
+        deaths_seen = agent.deaths
 
         camera = (agent.x, agent.y)
         origin = screen.camera_origin(camera)
@@ -261,6 +321,15 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
             )
         screen.present()
     screen.close()
+
+
+def should_restart(config: Config, deaths: int, deaths_seen: int) -> bool:
+    """Whether a death should end this world and roll the next one.
+
+    Pulled out of the loop so the rule can be tested: the loop itself needs a
+    window, and this is the part with an actual decision in it.
+    """
+    return config.new_world_on_death and deaths > deaths_seen
 
 
 def _speed_index_for(settings, config: Config) -> int:

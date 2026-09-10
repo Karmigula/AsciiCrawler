@@ -22,6 +22,22 @@ def available_workers() -> int:
     return max(1, os.cpu_count() or 1)
 
 
+def configured_workers() -> int:
+    """The worker count the settings screen last saved, or one per core.
+
+    Read from the same file the menu writes, which is the whole point of that
+    file: a worker count set in the settings should be the one a soak uses.
+    Before it existed the menu wrote the number into a config object that
+    nothing outside that session ever read.
+    """
+    from settings_store import load_values
+
+    stored = load_values().get("workers")
+    if isinstance(stored, int) and stored >= 1:
+        return stored
+    return DEFAULT_CONFIG.soak_workers or available_workers()
+
+
 def _run_one(job: tuple[int, int, Config]) -> SimStats:
     """Module-level so it can be pickled to a worker process."""
     ticks, seed, config = job
@@ -94,10 +110,8 @@ def main(argv: list[str] | None = None) -> None:
 
     argv = sys.argv[1:] if argv is None else argv
     ticks = int(argv[0]) if len(argv) > 0 else 2000
-    worlds = int(argv[1]) if len(argv) > 1 else available_workers()
-    workers = int(argv[2]) if len(argv) > 2 else (
-        DEFAULT_CONFIG.soak_workers or available_workers()
-    )
+    worlds = int(argv[1]) if len(argv) > 1 else configured_workers()
+    workers = int(argv[2]) if len(argv) > 2 else configured_workers()
     seeds = list(range(1, worlds + 1))
     print(f"soaking {len(seeds)} worlds x {ticks} ticks on {workers} workers...")
     _report(run_many(ticks, seeds, DEFAULT_CONFIG, workers=workers))

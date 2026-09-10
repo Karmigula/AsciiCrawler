@@ -45,6 +45,7 @@ ENTRIES: tuple[tuple[str, str], ...] = (
     ("watch", "let it out into the dark"),
     ("new world", "roll a different dungeon"),
     ("settings", "workers, colour, flourishes"),
+    ("soak", "test many worlds at once"),
     ("quit", "close the window"),
 )
 
@@ -147,6 +148,13 @@ def default_settings(config, max_workers: int) -> list[Setting]:
             index=0,
         ),
         Setting(
+            "on_death",
+            "on death",
+            "keep the world and its memories, or start over",
+            ("same world", "new world"),
+            index=1 if config.new_world_on_death else 0,
+        ),
+        Setting(
             "wash",
             "biome colour",
             "how strongly the ground is tinted",
@@ -177,13 +185,19 @@ def settings_lines(settings: list[Setting], selected: int, config) -> list[Line]
     """The settings screen, laid out like the menu it came from."""
     lines: list[Line] = [(row, config.menu_title_color) for row in block_text("SETTINGS")]
     lines.append(("", config.menu_dim_color))
-    for index, setting in enumerate(settings):
+    rows = [
+        f"{'>' if index == selected else ' '} {setting.label:<13} "
+        f"{setting.shown():<11} {setting.blurb}"
+        for index, setting in enumerate(settings)
+    ]
+    # Padded to a common width before they are centred. Centring each line on
+    # its own length makes the label column zigzag, which is exactly what a
+    # settings list must not do.
+    width = max(len(row) for row in rows)
+    for index, row in enumerate(rows):
         chosen = index == selected
-        marker = ">" if chosen else " "
         colour = config.menu_pick_color if chosen else config.menu_text_color
-        lines.append(
-            (f"{marker} {setting.label:<13} {setting.shown():<6}  {setting.blurb}", colour)
-        )
+        lines.append((row.ljust(width), colour))
     lines.append(("", config.menu_dim_color))
     lines.append(("left/right change    esc back", config.menu_dim_color))
     return lines
@@ -204,4 +218,55 @@ def apply_settings(settings: list[Setting], config):
         background_strength=strengths,
         moss_chance=0.06 if chosen.get("moss", True) else 0.0,
         soak_workers=int(chosen.get("workers", config.soak_workers)),
+        new_world_on_death=chosen.get("on_death") == "new world",
     )
+
+
+def stored_values(settings: list[Setting]) -> dict:
+    """The settings as a plain dict, ready to write to disk."""
+    return {setting.key: setting.value for setting in settings}
+
+
+def apply_stored(settings: list[Setting], stored: dict) -> None:
+    """Move each setting to its remembered choice, ignoring anything stale.
+
+    A value that is no longer offered - a worker count from a bigger machine,
+    a colour step that has since been retuned - is skipped rather than being
+    forced in, so an old settings file cannot put the menu into a state it
+    cannot represent.
+    """
+    for setting in settings:
+        value = stored.get(setting.key)
+        if value in setting.values:
+            setting.index = setting.values.index(value)
+
+
+def soak_lines(status: str, results, config) -> list[Line]:
+    """The soak screen: what it is doing, or what it found."""
+    lines: list[Line] = [(row, config.menu_title_color) for row in block_text("SOAK")]
+    lines.append(("", config.menu_dim_color))
+    lines.append((status, config.menu_pick_color))
+    lines.append(("", config.menu_dim_color))
+    for stats in results or []:
+        starved = 100.0 * stats.frontier_starved_ticks / max(1, stats.ticks)
+        moved = 100.0 * stats.moved_ticks / max(1, stats.ticks)
+        trouble = starved > 2.0 or moved < 80.0
+        lines.append(
+            (
+                f"seed {stats.seed:<3} lvl {stats.final_level:<3} kills {stats.kills:<6}"
+                f"reach {stats.max_distance:<6} moved {moved:5.1f}%  "
+                f"starved {starved:5.1f}%",
+                config.hud_bad_color if trouble else config.menu_text_color,
+            )
+        )
+    if results:
+        lines.append(("", config.menu_dim_color))
+        lines.append(
+            (
+                "red means a world where the agent stalled or ran out of frontier",
+                config.menu_dim_color,
+            )
+        )
+    lines.append(("", config.menu_dim_color))
+    lines.append(("esc back", config.menu_dim_color))
+    return lines
