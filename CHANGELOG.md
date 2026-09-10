@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### It runs in a browser now
+
+`web/` serves the same aquarium over a WebSocket: the server ticks one world
+and every visitor watches it. Nobody plays this, so there is nothing to keep
+separate per person — one simulation, one serialized frame, every socket. It
+ticks only while somebody is looking.
+
+Not a port and not a second copy of the game. The frame the browser paints is
+built by the same code the desktop window uses, which is now `render/frame.py`
+— pulled out of `main.py` so that a headless server can build a picture
+without pygame anywhere in the process.
+
+Deploy with the included `render.yaml` (Render blueprint) or `Procfile`, and
+run it locally with `run-web.bat`.
+
+### Faster
+
+- **Biomes are looked up once per chunk, not once per tile.** The renderer
+  asked which biome every visible tile was in, every frame — thousands of
+  repeats of the same region-noise arithmetic for tiles that share a chunk.
+  A chunk's biome is fixed the moment its coordinates are, so it is cached:
+  about a quarter off the cost of drawing a frame, desktop and web alike.
+
 ### Twelve new biomes
 
 The world had three faces; it now has fifteen, and it no longer picks between

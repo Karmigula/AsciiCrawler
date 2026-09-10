@@ -31,6 +31,50 @@ numpy — note the `-ce`, since plain `pygame` is a rival fork that installs a
 module by the same name and the two do not belong in one environment.
 `requirements.txt` also carries uvicorn, which nothing imports yet.
 
+## Watching it in a browser
+
+There is a hosted version of the same game in `web/`. It is not a port: the
+server runs the identical simulation and the identical frame builder, and
+sends the finished picture down a WebSocket for the page to paint.
+
+```
+.venv\Scripts\python.exe -m uvicorn web.app:app --port 8000
+```
+
+Then open <http://127.0.0.1:8000>, or double-click `run-web.bat`.
+
+**Everyone watches the same world.** Nobody plays AsciiCrawler, so there is no
+input to keep separate per visitor and no reason to run a world each — one
+simulation feeds every socket, and the same serialized frame goes to all of
+them. It only ticks while somebody has the page open, so an empty room costs
+nothing.
+
+| variable | | default |
+| --- | --- | --: |
+| `CRAWLER_COLS` / `CRAWLER_ROWS` | size of the window | 88 × 40 |
+| `CRAWLER_FPS` | frames a second to aim for | 8 |
+| `CRAWLER_WORLD_TICKS` | roll a fresh world after this many ticks | 40,000 |
+| `CRAWLER_SEED` | which world to start on | config default |
+| `CRAWLER_HALL` | `1` to write the hall of fame to disk | off |
+
+A small host will not always hit the frame rate. That is fine — falling
+behind makes the tank run slower, not wrong.
+
+### Deploying it
+
+`render.yaml` is a Render blueprint: **New → Blueprint**, point it at the
+repo, done. `Procfile` covers hosts that want one instead. The start command
+either way is:
+
+```
+uvicorn web.app:app --host 0.0.0.0 --port $PORT
+```
+
+Render's free instance sleeps after a spell without traffic and wakes on the
+next request, which suits something nobody is obliged to watch. For a custom
+domain, point a subdomain at it rather than the apex — `crawl.yourdomain.com`
+keeps the rest of the domain free to move.
+
 See [CHANGELOG.md](CHANGELOG.md) for what is in this release.
 
 ## Controls

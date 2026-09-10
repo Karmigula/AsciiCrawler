@@ -1,0 +1,26 @@
+# One-click deploy for Render: New > Blueprint, point it at this repo.
+#
+# The free plan sleeps after a spell with no traffic and wakes on the next
+# request, which suits an aquarium nobody is obliged to watch. The simulation
+# only ticks while somebody has the page open, so an idle instance is idle.
+services:
+  - type: web
+    name: asciicrawler
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn web.app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    envVars:
+      # The window and the frame rate. Lower them if the instance cannot keep
+      # up - a slow host makes the tank run slower, which is a look, not a bug.
+      - key: CRAWLER_COLS
+        value: "88"
+      - key: CRAWLER_ROWS
+        value: "40"
+      - key: CRAWLER_FPS
+        value: "8"
+      # Roll a fresh world after this many ticks. Chunks are never discarded,
+      # so a world that runs for a month is a slow leak.
+      - key: CRAWLER_WORLD_TICKS
+        value: "40000"

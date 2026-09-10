@@ -114,6 +114,11 @@ class ChunkStore:
         self.seed = config.world_seed if world_seed is None else world_seed
         self._chunks: dict[ChunkKey, Chunk] = {}
         self._spawn: Position | None = None
+        # A chunk's biome is fixed the moment its coordinates are, and the
+        # renderer asks for one per tile per frame - thousands of repeats of
+        # the same region-noise arithmetic. One entry per chunk, alongside
+        # chunks that are already kept forever, so this costs nothing new.
+        self._biomes: dict[ChunkKey, object] = {}
 
     def __len__(self) -> int:
         return len(self._chunks)
@@ -159,7 +164,12 @@ class ChunkStore:
     def biome_at(self, x: int, y: int):
         """The biome of the chunk containing a global tile."""
         size = self._config.chunk_size
-        return biome_at(self.seed, x // size, y // size, self._config)
+        key = (x // size, y // size)
+        found = self._biomes.get(key)
+        if found is None:
+            found = biome_at(self.seed, key[0], key[1], self._config)
+            self._biomes[key] = found
+        return found
 
     def biome_key_at(self, x: int, y: int) -> str:
         """Just the key, for the renderer to look a palette up with."""

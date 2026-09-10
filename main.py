@@ -33,9 +33,8 @@ from pathlib import Path
 
 import pygame
 
-from agent.fov import compute_fov
 from config import DEFAULT_CONFIG, Config
-from render.fog import fog_grid
+from render.frame import build_frame
 from render.hud import (
     bag_lines,
     chronicle_lines,
@@ -59,14 +58,12 @@ from render.menu import (
     stored_values,
 )
 from sim import hall
-from render.flourish import speckle_moss
-from render.palette import background_grid, item_color, monster_color, terrain_color
-from render.overlays import OVERLAY_NAMES, apply_overlay
+from render.overlays import OVERLAY_NAMES
 from render.screen import Screen
+from sim.session import should_restart
 from sim.soak import available_workers, run_many
 from sim.tick import AgentState, tick
 from world.chunks import ChunkStore
-from world.tiles import Tile
 
 _OVERLAY_KEYS = {
     pygame.K_F1: OVERLAY_NAMES[0],
@@ -87,12 +84,6 @@ def _new_world(config: Config, seed: int):
 def main(config: Config = DEFAULT_CONFIG) -> None:
     seed = config.world_seed
     world, agent, rng = None, None, None
-    palette = {
-        Tile.WALL.glyph: config.wall_color,
-        Tile.FLOOR.glyph: config.floor_color,
-        Tile.WATER.glyph: config.water_color,
-        Tile.LAVA.glyph: config.lava_color,
-    }
     screen = Screen(config)
     clock = pygame.time.Clock()
     tick_duration = 1.0 / config.tps
@@ -306,50 +297,10 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
         camera = (agent.x, agent.y)
         origin = screen.camera_origin(camera)
         cols, rows = screen.view_dims
-        rows_text = [
-            "".join(
-                world.tile_at(origin[0] + x, origin[1] + y).glyph for x in range(cols)
-            )
-            for y in range(rows)
-        ]
-        visible = _fov_global(world, agent, config)
-        mind = agent.mind(config)
-        cells = fog_grid(
-            rows_text,
-            palette,
-            visible,
-            agent.memory,
-            config.remembered_brightness,
-            origin=origin,
-            tick=agent.tick_count,
-            ttl=mind.memory_ttl,
-            stale_factor=config.stale_brightness,
-            stale_fraction=config.memory_stale_fraction,
-            ghost_color=config.ghost_color,
-            color_for=lambda glyph, coord: terrain_color(
-                glyph, coord, config, world.biome_key_at(*coord)
-            ),
-            ghost_color_for=lambda glyph: _thing_color(glyph, config),
-            memory_tint=config.memory_tint_color,
-            fresh_tint=config.fresh_tint,
-            stale_tint=config.stale_tint,
+        cells, backgrounds, _ = build_frame(
+            world, agent, config, origin, cols, rows, overlay
         )
-        cells = speckle_moss(cells, origin, Tile.FLOOR.glyph, config)
-        if overlay is not None:
-            cells = apply_overlay(cells, overlay, origin, agent, visible, mind)
-        screen.draw_cells(
-            cells,
-            background_grid(
-                rows_text,
-                origin,
-                visible,
-                agent.memory,
-                config,
-                tick=agent.tick_count,
-                ttl=mind.memory_ttl,
-                biome_for=lambda coord: world.biome_key_at(*coord),
-            ),
-        )
+        screen.draw_cells(cells, backgrounds)
         screen.draw_glyph(
             config.agent_glyph, agent.x, agent.y, camera, config.agent_color
         )
@@ -382,15 +333,6 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
     screen.close()
 
 
-def should_restart(config: Config, deaths: int, deaths_seen: int) -> bool:
-    """Whether a death should end this world and roll the next one.
-
-    Pulled out of the loop so the rule can be tested: the loop itself needs a
-    window, and this is the part with an actual decision in it.
-    """
-    return config.new_world_on_death and deaths > deaths_seen
-
-
 def _speed_index_for(settings, config: Config) -> int:
     """Which speed step the settings screen currently names."""
     for setting in settings:
@@ -400,32 +342,11 @@ def _speed_index_for(settings, config: Config) -> int:
     return 0
 
 
-def _thing_color(glyph: str, config: Config):
-    """Whatever is standing on a tile: monsters by threat, items by kind."""
-    if glyph in config.monster_colors:
-        return monster_color(glyph, config)
-    return item_color(glyph, config)
-
-
 def _save_screenshot(screen: Screen, config: Config, seed: int, agent: AgentState) -> None:
     folder = Path(config.screenshot_dir)
     folder.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     screen.screenshot(folder / f"crawler-{seed}-{agent.tick_count}-{stamp}.png")
-
-
-def _fov_global(world: ChunkStore, agent: AgentState, config: Config) -> set[tuple[int, int]]:
-    """Visible set in global coordinates (window semantics match the tick)."""
-    radius = agent.mind(config).fov_radius
-    origin_x, origin_y = agent.x - radius, agent.y - radius
-    window = [
-        [world.tile_at(origin_x + lx, origin_y + ly) for lx in range(2 * radius + 1)]
-        for ly in range(2 * radius + 1)
-    ]
-    return {
-        (origin_x + lx, origin_y + ly)
-        for lx, ly in compute_fov(window, (radius, radius), radius)
-    }
 
 
 if __name__ == "__main__":

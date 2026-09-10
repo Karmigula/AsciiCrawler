@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AsciiCrawler</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main>
+  <section id="stage">
+    <canvas id="view" width="900" height="600"></canvas>
+    <p id="status">connecting…</p>
+  </section>
+  <aside id="side">
+    <h1>AsciiCrawler</h1>
+    <p class="blurb">
+      Nobody plays this. An <code>@</code> explores an endless dungeon on its
+      own, fights what it meets, and forgets what it has not seen lately.
+      Everyone here is watching the same one.
+    </p>
+    <pre id="hud"></pre>
+    <h2>recently</h2>
+    <pre id="log"></pre>
+    <p class="foot">
+      <a href="https://github.com/Karmigula/AsciiCrawler">source</a>
+      <span id="viewers"></span>
+    </p>
+  </aside>
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>
