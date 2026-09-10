@@ -1,5 +1,41 @@
 # Changelog
 
+## Unreleased
+
+### Twelve new biomes
+
+The world had three faces; it now has fifteen, and it no longer picks between
+them by distance. A low-frequency region noise chooses the theme while
+distance keeps its old job of setting danger and loot — so how far the agent
+has walked no longer tells you what it is walking through.
+
+New places: the ashfields, the ossuary, fungal warren, overgrown ruins, rust
+marsh, crystal hollows, the frozen deep, spore hollows, the sunken cathedral,
+derelict station, machine halls, and the weave.
+
+Five new generators arrived with them — eroded ruins, gridded stations with
+doors that do not all open, braided mazes, causeways over deep water, and
+regular lattices with pieces missing.
+
+### Two new kinds of ground
+
+- **Ice** carries the agent a step past where it meant to stop.
+- **Haze** is walkable and hurts, so routes price it as a detour rather than
+  refusing it.
+
+### Fixed
+
+- **Config knobs that no route could feel.** `haze_step_cost` shipped dead:
+  the field existed, the pathfinder had a parameter for it, and nothing
+  connected the two, so every route in the game was planned on hardcoded
+  defaults. Costs now travel from the config to the planner, and a test pins
+  the handover rather than the number.
+- **The frozen deep could strand the agent.** Long slides invalidated a plan
+  faster than the agent could make one, so it re-planned in place forever: one
+  world reached 16 tiles in 4,000 ticks and killed nothing. Slides are shorter
+  now and ice costs a little to cross — the same world reaches 237 tiles and
+  kills 33.
+
 ## 0.1.0 — 10 September 2026
 
 First release. An autonomous `@` explores an endless dungeon while you watch.

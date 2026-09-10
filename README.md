@@ -70,11 +70,28 @@ cannot shift a single tile of terrain.
 ## The world
 
 Chunks of 64×64 stream in as the agent approaches and are never discarded.
-Biomes go by distance from the origin — rooms and corridors near home,
-cellular-automata caves further out, then large caverns with water and lava,
-blended at the edges so there are no rings. Chunks drill their seam corridors
-from their own seed alone, so neighbours agree at the border with no shared
-state.
+Chunks drill their seam corridors from their own seed alone, so neighbours
+agree at the border with no shared state.
+
+Fifteen biomes, chosen by **region noise** rather than by distance. Distance
+still sets how dangerous a place is and how good the loot gets; noise decides
+what it *looks* like. So the character of the world stops being a function of
+how far the agent has walked — there are no rings, and no two runs read the
+same:
+
+| | | |
+|---|---|---|
+| quarried halls | wet caves | deep caverns |
+| the ashfields | the ossuary | fungal warren |
+| overgrown ruins | rust marsh | crystal hollows |
+| the frozen deep | spore hollows | the sunken cathedral |
+| derelict station | machine halls | the weave |
+
+Eight generators back them: rooms, caves, caverns, eroded ruins, gridded
+stations, braided mazes, flooded causeways, and lattices. Two terrain types
+came with them — **ice**, which carries you a step past where you meant to
+stop, and **haze**, which is walkable and costs hit points, so a plan prices
+it as a detour rather than refusing it.
 
 ## Soaking many worlds at once
 

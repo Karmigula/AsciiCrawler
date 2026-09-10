@@ -30,7 +30,7 @@ import random
 from dataclasses import dataclass, field
 
 from agent.memory import Memory, Position
-from agent.pathing import DIRS_8, distances, rebuild_path
+from agent.pathing import DIRS_8, StepCosts, distances, rebuild_path
 from agent.threat import danger, flee_threshold
 from config import Config
 from sim.items import ITEMS
@@ -124,6 +124,7 @@ class ExploreGoal:
             targets=candidates,
             max_expansions=config.path_expansion_cap,
             stop_after=config.plan_settle_target,
+            costs=StepCosts.from_config(config),
         )
         best: Position | None = None
         best_score = float("-inf")
@@ -319,6 +320,7 @@ class LootGoal:
             targets=[coord for coord, _ in candidates],
             max_expansions=config.path_expansion_cap,
             stop_after=config.plan_settle_target,
+            costs=StepCosts.from_config(config),
         )
         best, best_score = None, 0.0
         for coord, value in candidates:

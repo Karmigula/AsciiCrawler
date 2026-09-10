@@ -11,9 +11,11 @@ Tie-breaking is deterministic: fixed neighbour order plus FIFO insertion.
 """
 
 import heapq
+from dataclasses import dataclass
 from collections.abc import Iterable, Mapping
 
 from agent.memory import Memory, Position
+from world.tiles import Tile
 
 DIRS_8: tuple[tuple[int, int], ...] = (
     (1, 0),
@@ -34,10 +36,37 @@ def _octile(a: Position, b: Position) -> float:
     return max(dx, dy) + (_SQRT2 - 1.0) * min(dx, dy)
 
 
-def _neighbors(memory: Memory, pos: Position, hazard_cost: float = 12.0):
+@dataclass(frozen=True)
+class StepCosts:
+    """What a plan pays, on top of distance, to cross awkward ground.
+
+    These live on the config, but a `Memory` does not carry one and the
+    pathfinder takes a memory rather than a world. So the tuning travels as a
+    value: `from_config` at the call site, defaults everywhere else. Before
+    this existed the config fields were decorative - `_neighbors` read its own
+    defaults and nothing on the config could change a route.
+    """
+
+    hazard: float = 12.0
+    ice: float = 2.0
+    haze: float = 5.0
+
+    @classmethod
+    def from_config(cls, config) -> "StepCosts":
+        return cls(
+            hazard=config.hazard_step_cost,
+            ice=config.ice_step_cost,
+            haze=config.haze_step_cost,
+        )
+
+
+DEFAULT_COSTS = StepCosts()
+
+
+def _neighbors(memory: Memory, pos: Position, costs: StepCosts = DEFAULT_COSTS):
     """Yield (neighbor, step_cost) over believed floors, corner-cut safe.
 
-    A tile the agent knows is trapped costs `hazard_cost` extra rather than
+    A tile the agent knows is trapped costs `costs.hazard` extra rather than
     being refused. Refusing them looks prudent and is a trap of its own: a
     single remembered trap in a one-tile corridor walls the agent off from
     everything beyond it, and since it still has a whole room to wander in,
@@ -59,11 +88,26 @@ def _neighbors(memory: Memory, pos: Position, hazard_cost: float = 12.0):
             continue
         step = _SQRT2 if dx != 0 and dy != 0 else 1.0
         if memory.believes_hazard(nxt):
-            step += hazard_cost
+            step += costs.hazard
+        elif memory.terrain(nxt) is Tile.ICE:
+            # Ice is walkable but it takes the agent where it likes. Priced
+            # low: enough to prefer bare rock alongside a drift, not enough to
+            # refuse a frozen hall that has no way round.
+            step += costs.ice
+        elif memory.terrain(nxt) is Tile.HAZE:
+            # Fog is passable and costs hit points, so it is priced like a
+            # detour rather than refused: worth crossing to get somewhere,
+            # not worth wandering through.
+            step += costs.haze
         yield nxt, step
 
 
-def astar(memory: Memory, start: Position, goal: Position) -> list[Position] | None:
+def astar(
+    memory: Memory,
+    start: Position,
+    goal: Position,
+    costs: StepCosts = DEFAULT_COSTS,
+) -> list[Position] | None:
     """Shortest believed-passable path from start to goal, or None.
 
     The path lists every step after `start`, ending at `goal`. The search
@@ -87,7 +131,7 @@ def astar(memory: Memory, start: Position, goal: Position) -> list[Position] | N
         closed.add(pos)
         if len(closed) > bound:
             return None
-        for nxt, step in _neighbors(memory, pos):
+        for nxt, step in _neighbors(memory, pos, costs):
             tentative = g + step
             if nxt in closed or (nxt in g_score and g_score[nxt] <= tentative):
                 continue
@@ -104,6 +148,7 @@ def distances(
     targets: Iterable[Position] | None = None,
     max_expansions: int | None = None,
     stop_after: int | None = None,
+    costs: StepCosts = DEFAULT_COSTS,
 ) -> tuple[Mapping[Position, float], dict[Position, Position]]:
     """Dijkstra from start over believed floors: (cost-so-far, came-from).
 
@@ -162,7 +207,7 @@ def distances(
             settled_targets += 1
             if stop_after is not None and settled_targets >= stop_after:
                 break
-        for nxt, step in _neighbors(memory, pos):
+        for nxt, step in _neighbors(memory, pos, costs):
             tentative = g + step
             if nxt in closed or (nxt in cost and cost[nxt] <= tentative):
                 continue

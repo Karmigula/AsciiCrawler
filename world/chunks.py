@@ -47,7 +47,17 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from config import Config, DEFAULT_CONFIG
-from world import gen_bsp, gen_cave, gen_cavern, gen_ruins
+from world import (
+    gen_bsp,
+    gen_causeway,
+    gen_cave,
+    gen_cavern,
+    gen_lattice,
+    gen_maze,
+    gen_ruins,
+    gen_scatter,
+    gen_station,
+)
 from world.biomes import biome_at
 from sim.items import roll_for
 from world.populate import (
@@ -372,11 +382,46 @@ def _build_ruins(rng, size, params, config) -> np.ndarray:
     )
 
 
+def _build_station(rng, size, params, config) -> np.ndarray:
+    return gen_station.generate(
+        rng,
+        size,
+        size,
+        params.get("cell", 11),
+        params.get("door_chance", 0.62),
+        params.get("sealed_chance", 0.16),
+    )
+
+
+def _build_maze(rng, size, params, config) -> np.ndarray:
+    return gen_maze.generate(rng, size, size, params.get("braid", 0.3))
+
+
+def _build_causeway(rng, size, params, config) -> np.ndarray:
+    return gen_causeway.generate(
+        rng,
+        size,
+        size,
+        params.get("causeways", 3),
+        params.get("platform_chance", 0.65),
+    )
+
+
+def _build_lattice(rng, size, params, config) -> np.ndarray:
+    return gen_lattice.generate(
+        rng, size, size, params.get("period", 6), params.get("gap_chance", 0.3)
+    )
+
+
 _BUILDERS = {
     "rooms": _build_rooms,
     "cave": _build_cave,
     "cavern": _build_cavern,
     "ruins": _build_ruins,
+    "station": _build_station,
+    "maze": _build_maze,
+    "causeway": _build_causeway,
+    "lattice": _build_lattice,
 }
 
 
@@ -393,6 +438,18 @@ def _generate_chunk(seed: int, cx: int, cy: int, config: Config) -> np.ndarray:
     biome = biome_at(seed, cx, cy, config)
     builder = _BUILDERS.get(biome.builder, _build_cave)
     tiles = builder(rng, size, biome.params, config)
+    drift = biome.params.get("scatter")
+    if drift:
+        # Ice and fog settle on finished terrain rather than being part of the
+        # floorplan, so they are a post-pass over whatever the builder made.
+        gen_scatter.scatter(
+            tiles,
+            rng,
+            int(Tile[drift["tile"]]),
+            drift.get("chance", 0.4),
+            drift.get("smooth_steps", 3),
+            config.cave_wall_threshold,
+        )
     mid = size // 2
     tiles[mid, mid] = int(Tile.FLOOR)
     _drill_seam_corridors(tiles, seed, cx, cy, config)

@@ -30,6 +30,13 @@ MONSTERS: tuple[MonsterKind, ...] = (
     MonsterKind("ogre", "O", hp=26, attack=7, speed=2, threat=3.5, tier=3),
     MonsterKind("troll", "T", hp=40, attack=10, speed=2, threat=5.0, tier=4),
     MonsterKind("dragon", "D", hp=80, attack=18, speed=1, threat=9.0, tier=5),
+    # Constructs: the bestiary of the built places. Tiered alongside the
+    # beasts rather than above them, so a shallow station is a nuisance and a
+    # deep one is not.
+    MonsterKind("mite", "x", hp=4, attack=1, speed=1, threat=0.6, tier=0),
+    MonsterKind("sentry", "S", hp=16, attack=5, speed=2, threat=2.4, tier=2),
+    MonsterKind("construct", "C", hp=30, attack=8, speed=2, threat=4.0, tier=3),
+    MonsterKind("warden", "W", hp=70, attack=16, speed=1, threat=8.0, tier=5),
 )
 
 MAX_TIER = max(kind.tier for kind in MONSTERS)

@@ -74,6 +74,18 @@ class Config:
             "marsh": {"#": (134, 94, 62), ".": (58, 42, 30), "~": (78, 104, 82), "^": (226, 96, 40)},
             # pale facets
             "crystal": {"#": (152, 172, 204), ".": (56, 66, 88), "~": (96, 152, 220), "^": (220, 104, 60)},
+            # glacial: bright rock, colder floor, ice paler than either
+            "frozen": {"#": (176, 196, 214), ".": (62, 78, 96), "~": (86, 140, 200), "^": (214, 100, 56), "_": (206, 226, 240)},
+            # sickly green murk
+            "spores": {"#": (96, 116, 78), ".": (40, 52, 34), "~": (74, 122, 96), "^": (220, 108, 48), "*": (150, 210, 120)},
+            # drowned stone
+            "sunken": {"#": (104, 116, 130), ".": (60, 70, 82), "~": (52, 92, 134), "^": (206, 96, 52)},
+            # steel and emergency lighting
+            "station": {"#": (128, 142, 156), ".": (44, 52, 62), "~": (72, 118, 158), "^": (232, 120, 50)},
+            # the inside of a machine
+            "machine": {"#": (96, 128, 112), ".": (28, 40, 36), "~": (70, 130, 130), "^": (226, 110, 46)},
+            # arcane lattice
+            "weave": {"#": (150, 118, 190), ".": (48, 40, 66), "~": (96, 108, 200), "^": (224, 108, 62)},
         }
     )
     tile_jitter: float = 0.09  # +-9% per-tile brightness, hashed by position
@@ -99,6 +111,10 @@ class Config:
             "O": (214, 142, 84),
             "T": (190, 118, 206),
             "D": (236, 86, 74),
+            "x": (150, 190, 170),
+            "S": (120, 200, 220),
+            "C": (110, 170, 235),
+            "W": (170, 140, 245),
         }
     )
     item_colors: dict = field(
@@ -240,6 +256,12 @@ class Config:
     # forbidden: one remembered trap in a one-tile corridor used to wall the
     # agent off from the rest of its world for the rest of the run.
     hazard_step_cost: float = 12.0
+    # Ice carries you on. Capped, because a long enough slide across a frozen
+    # hall stops being a hazard and starts being teleportation.
+    ice_slide_max: int = 1
+    haze_damage: int = 2  # per tick spent standing in it
+    haze_step_cost: float = 5.0  # what a plan pays to route through fog
+    ice_step_cost: float = 2.0  # ...and what it pays to cross ice
 
     # fear: threat read off memory, never off world truth
     threat_radius: int = 10  # tiles; remembered monsters further out are ignored

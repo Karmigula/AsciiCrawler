@@ -250,31 +250,57 @@ def test_the_pruner_fires_on_its_interval_and_bounds_memory():
     assert len(agent.memory) <= seen_early * 4  # bounded, not ever-growing
 
 
-def test_monsters_outside_the_activation_radius_never_move():
+def test_monsters_only_move_while_the_agent_is_near_them():
     """The dormancy invariant. If distant monsters moved, a chunk's contents
-    would depend on where the agent had wandered, not on its seed."""
+    would depend on where the agent had wandered, not on its seed.
+
+    Checked per tick rather than by comparing start and end positions: a
+    monster can legitimately be close enough to move early on and far away by
+    the end, and the old version of this test called that a failure whenever
+    the agent's route happened to pass one.
+
+    Nearness is measured exactly where the scan measures it: the monster's
+    position *before* it moved, against the agent's position *after* it moved.
+    Within a tick the agent acts first, the scan runs, and then the monsters
+    act - so neither before/before nor after/after is the right pairing, and
+    both of them flag legal moves at the edge of the radius as violations.
+    """
     from world.chunks import ChunkStore
 
     world = ChunkStore(DEFAULT_CONFIG, world_seed=13)
     spawn = world.spawn
     agent = AgentState(x=spawn[0], y=spawn[1])
     rng = random.Random(2)
-    for _ in range(30):  # let the world stream out around the agent
-        tick(agent, world, rng, DEFAULT_CONFIG)
-
     radius = DEFAULT_CONFIG.activation_radius
-    distant = [
-        (monster, (monster.x, monster.y))
-        for chunk in [world.get_chunk(cx, cy) for cx in (-1, 0, 1) for cy in (-1, 0, 1)]
-        for monster in chunk.contents.monsters
-        if max(abs(monster.x - agent.x), abs(monster.y - agent.y)) > radius * 2
-    ]
-    assert distant, "no distant monsters to check"
-    for _ in range(60):
+
+    watched = []
+    for _ in range(40):
         tick(agent, world, rng, DEFAULT_CONFIG)
-    for monster, was in distant:
-        if max(abs(monster.x - agent.x), abs(monster.y - agent.y)) > radius:
-            assert (monster.x, monster.y) == was
+    for cx in (-1, 0, 1):
+        for cy in (-1, 0, 1):
+            watched.extend(world.get_chunk(cx, cy).contents.monsters)
+    assert watched, "no monsters to watch"
+
+    previous = {id(m): (m.x, m.y) for m in watched}
+    for _ in range(80):
+        deaths = agent.deaths
+        tick(agent, world, rng, DEFAULT_CONFIG)
+        after = (agent.x, agent.y)
+        if agent.deaths != deaths:
+            # The agent died and was moved to spawn after the monsters acted,
+            # so neither end of this tick says where it was when they did.
+            previous = {id(m): (m.x, m.y) for m in watched}
+            continue
+        for monster in watched:
+            now = (monster.x, monster.y)
+            was = previous[id(monster)]
+            if now == was:
+                continue
+            reach = max(abs(was[0] - after[0]), abs(was[1] - after[1]))
+            assert reach <= radius, (
+                f"a monster {reach} tiles away moved while dormant"
+            )
+            previous[id(monster)] = now
 
 
 def test_a_run_with_moving_monsters_is_still_deterministic():

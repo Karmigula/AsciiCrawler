@@ -61,9 +61,19 @@ def test_armour_blunts_a_weak_blow_but_never_stops_it():
 
 
 def test_deeper_monsters_are_worth_more_experience():
-    worths = [xp_for(_monster(k.glyph), DEFAULT_CONFIG) for k in MONSTERS]
+    """By tier, not by position in the table: the constructs are listed after
+    the beasts but tiered alongside them, so the table is no longer sorted."""
+    by_tier = sorted(MONSTERS, key=lambda kind: kind.tier)
+    worths = [xp_for(_monster(kind.glyph), DEFAULT_CONFIG) for kind in by_tier]
     assert worths == sorted(worths)
     assert worths[0] < worths[-1]
+
+
+def test_two_monsters_of_a_tier_are_worth_the_same():
+    same_tier = [k for k in MONSTERS if k.tier == 0]
+    assert len(same_tier) > 1, "fixture: needs at least two tier-0 kinds"
+    worths = {xp_for(_monster(k.glyph), DEFAULT_CONFIG) for k in same_tier}
+    assert len(worths) == 1
 
 
 def test_stats_take_applies_damage_and_never_heals():

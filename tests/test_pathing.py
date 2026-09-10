@@ -206,3 +206,81 @@ def test_a_target_past_the_cap_reads_as_unreachable():
     assert reachable.get(far) is not None
     capped, _ = distances(memory, (2, 2), targets=[far], max_expansions=50)
     assert capped.get(far) is None
+
+
+def test_step_costs_are_read_from_the_config_not_from_defaults():
+    """A config knob that no route can feel is a knob that does not exist.
+
+    `haze_step_cost` shipped dead for exactly this reason: the field was on
+    the config, `_neighbors` had a parameter for it, and nothing connected the
+    two - so every route in the game was planned with the module defaults. The
+    test pins the wiring rather than the number: raise the price of fog high
+    enough and the plan must go round it.
+    """
+    from dataclasses import replace
+
+    from agent.pathing import StepCosts, astar
+    from config import DEFAULT_CONFIG
+
+    # A short fogged corridor between the ends, and a long clean way round.
+    memory = Memory()
+    seen = {}
+    for x in range(1, 6):
+        seen[(x, 0)] = Tile.HAZE  # the direct route: five tiles of fog
+    for x in range(7):
+        seen[(x, 4)] = Tile.FLOOR  # the long way, four rows south
+    for y in range(5):
+        seen[(0, y)] = Tile.FLOOR
+        seen[(6, y)] = Tile.FLOOR
+    memory.observe(seen, tick=0)
+
+    cheap = StepCosts.from_config(replace(DEFAULT_CONFIG, haze_step_cost=0.0))
+    dear = StepCosts.from_config(replace(DEFAULT_CONFIG, haze_step_cost=50.0))
+
+    through = astar(memory, (0, 0), (6, 0), costs=cheap)
+    around = astar(memory, (0, 0), (6, 0), costs=dear)
+    assert through is not None and around is not None
+    assert any(memory.terrain(step) is Tile.HAZE for step in through)
+    assert not any(memory.terrain(step) is Tile.HAZE for step in around)
+
+
+def test_the_goal_layer_hands_the_configs_step_costs_to_the_pathfinder():
+    """The wiring bug lived in the goal layer, so the test lives there too.
+
+    The sibling test above proves `astar` honours the costs it is handed -
+    which is exactly what the shipped-dead `haze_step_cost` also did. What was
+    missing was anyone handing them over, so this pins the handover itself:
+    every sweep the goal layer starts must carry the costs the config asked
+    for, not the module defaults.
+    """
+    import random
+    from dataclasses import replace
+
+    import agent.goals as goals
+    from agent.pathing import StepCosts
+    from config import DEFAULT_CONFIG
+
+    config = replace(
+        DEFAULT_CONFIG, hazard_step_cost=3.0, ice_step_cost=7.0, haze_step_cost=9.0
+    )
+    seen: list = []
+    real = goals.distances
+
+    def spy(*args, **kwargs):
+        seen.append(kwargs.get("costs"))
+        return real(*args, **kwargs)
+
+    memory = Memory()
+    memory.observe({(x, y): Tile.FLOOR for x in range(5) for y in range(5)}, tick=0)
+
+    goals.distances = spy
+    try:
+        goals.ExploreGoal().decide((2, 2), memory, random.Random(1), config)
+        goals.LootGoal().decide((2, 2), memory, {}, config)
+    finally:
+        goals.distances = real
+
+    assert seen, "the goal layer never ran a sweep; the test proves nothing"
+    assert all(c == StepCosts.from_config(config) for c in seen), (
+        f"a sweep planned on defaults instead of the config: {seen}"
+    )

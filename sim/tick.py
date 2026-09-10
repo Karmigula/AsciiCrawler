@@ -109,6 +109,7 @@ def tick(agent: AgentState, world, rng: random.Random, config: Config) -> None:
     _pick_up(agent, world, config)
     _quaff(agent, config)
     _burn(agent, world, config)
+    _choke(agent, world, config)
     _spot_traps(agent, world, rng, config)
     agent.life_depth = max(
         agent.life_depth, int((agent.x * agent.x + agent.y * agent.y) ** 0.5)
@@ -315,8 +316,30 @@ def _try_step(
             _kill(agent, monster, world, rng, config)
         return ATTACKED
     agent.x, agent.y = nxt
+    _slide(agent, dx, dy, world, config)
     _spring_trap(agent, world, config)
     return MOVED
+
+
+def _slide(agent: AgentState, dx: int, dy: int, world, config: Config) -> None:
+    """Ice carries the agent on in the direction it was already going.
+
+    Capped: a slide long enough to cross a frozen hall stops reading as a
+    hazard and starts reading as teleportation. Stops early at anything it
+    cannot enter, which is what makes ice interesting - the agent plans a
+    route and the floor disagrees with the plan.
+    """
+    for _ in range(max(0, config.ice_slide_max)):
+        if not world.tile_at(agent.x, agent.y).slippery:
+            return
+        ahead = (agent.x + dx, agent.y + dy)
+        tile = world.tile_at(*ahead)
+        if not tile.passable:
+            return
+        entity_at = getattr(world, "entity_at", None)
+        if entity_at is not None and entity_at(*ahead) is not None:
+            return  # slid into something; the collision stops the slide
+        agent.x, agent.y = ahead
 
 
 def _spring_trap(agent: AgentState, world, config: Config) -> None:
@@ -335,6 +358,15 @@ def _spring_trap(agent: AgentState, world, config: Config) -> None:
     agent.memory.mark_hazard(
         (agent.x, agent.y), agent.tick_count, world.tile_at(agent.x, agent.y)
     )
+
+
+def _choke(agent: AgentState, world, config: Config) -> None:
+    """Standing in haze costs hit points every tick it is stood in."""
+    if config.haze_damage <= 0 or not agent.stats.alive:
+        return
+    if world.tile_at(agent.x, agent.y).harmful:
+        agent.last_wound = "the spores"
+        agent.damage_taken += agent.stats.take(config.haze_damage)
 
 
 def _spot_traps(agent: AgentState, world, rng: random.Random, config: Config) -> None:

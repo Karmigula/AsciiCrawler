@@ -153,6 +153,64 @@ BIOMES: tuple[Biome, ...] = (
         monsters=("g", "o", "O", "T", "D"),
         weight=0.6,
     ),
+    Biome(
+        "frozen",
+        "the frozen deep",
+        builder="cave",
+        # Open rock, then drifts of ice settled over the floor.
+        params={
+            "fill_prob": 0.43,
+            "smooth_steps": 5,
+            "scatter": {"tile": "ICE", "chance": 0.46, "smooth_steps": 3},
+        },
+        monsters=("r", "g", "o", "T", "D"),
+        weight=0.8,
+    ),
+    Biome(
+        "spores",
+        "spore hollows",
+        builder="cave",
+        params={
+            "fill_prob": 0.41,
+            "smooth_steps": 5,
+            "scatter": {"tile": "HAZE", "chance": 0.40, "smooth_steps": 3},
+        },
+        monsters=("r", "g", "o", "O"),
+        weight=0.7,
+    ),
+    Biome(
+        "sunken",
+        "the sunken cathedral",
+        builder="causeway",
+        params={"causeways": 3, "platform_chance": 0.65},
+        monsters=("r", "g", "o", "T"),
+        liquids="water",
+        weight=0.6,
+    ),
+    Biome(
+        "station",
+        "derelict station",
+        builder="station",
+        params={"cell": 11, "door_chance": 0.62, "sealed_chance": 0.16},
+        monsters=("x", "S", "C", "W"),
+        weight=0.9,
+    ),
+    Biome(
+        "machine",
+        "machine halls",
+        builder="maze",
+        params={"braid": 0.3},
+        monsters=("x", "S", "C", "W"),
+        weight=0.6,
+    ),
+    Biome(
+        "weave",
+        "the weave",
+        builder="lattice",
+        params={"period": 6, "gap_chance": 0.3},
+        monsters=("x", "S", "C", "W", "D"),
+        weight=0.5,
+    ),
 )
 
 BY_KEY: dict[str, Biome] = {biome.key: biome for biome in BIOMES}
