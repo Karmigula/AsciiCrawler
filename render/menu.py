@@ -46,9 +46,14 @@ ENTRIES: tuple[tuple[str, str], ...] = (
     ("new world", "roll a different dungeon"),
     ("settings", "workers, colour, flourishes"),
     ("soak", "test many worlds at once"),
+    ("hall of fame", "every life, and how it ended"),
     ("quit", "close the window"),
 )
 
+
+# Wide enough for the longest entry, worked out rather than guessed: adding
+# "hall of fame" to the list silently pushed every blurb out of line.
+_LABEL_WIDTH = max(len(label) for label, _ in ENTRIES) + 1
 
 TITLE_ROWS = _ROWS * 2 + 1
 """How many lines at the top of `menu_lines` are title art, so the renderer
@@ -84,7 +89,7 @@ def menu_lines(selected: int, seed: int, config, running: bool = False) -> list[
         # Label and blurb share a line, padded to a fixed column. Centring
         # alternating short and long lines reads as ragged; one line per entry
         # of equal length reads as a list.
-        lines.append((f"{marker} {label:<10}  {blurb}", colour))
+        lines.append((f"{marker} {label:<{_LABEL_WIDTH}}  {blurb}", colour))
 
     lines.append(("", config.menu_dim_color))
     lines.append((f"world seed {seed}", config.menu_dim_color))
@@ -265,6 +270,73 @@ def soak_lines(status: str, results, config) -> list[Line]:
             (
                 "red means a world where the agent stalled or ran out of frontier",
                 config.menu_dim_color,
+            )
+        )
+    lines.append(("", config.menu_dim_color))
+    lines.append(("esc back", config.menu_dim_color))
+    return lines
+
+
+# (heading, width, right-aligned) - the header and every row are built from
+# this one spec, because hand-counting spaces to line up a header with its
+# columns is a job that is never quite finished.
+HALL_COLUMNS = (
+    ("", 3, True),
+    ("level", 5, True),
+    ("kills", 6, True),
+    ("depth", 6, True),
+    ("lived", 7, True),
+    ("build", 24, False),
+    ("killed by", 13, False),
+    ("score", 6, True),
+)
+
+
+def _hall_row(cells) -> str:
+    parts = []
+    for (_, width, right), cell in zip(HALL_COLUMNS, cells):
+        text = str(cell)
+        parts.append(text.rjust(width) if right else text.ljust(width))
+    return "  ".join(parts)
+
+
+def hall_lines(entries, config) -> list[Line]:
+    """The hall of fame, best run first.
+
+    Ranked by score rather than any single number, so the columns show what
+    went into it: a level that never left home reads differently from a modest
+    one that reached the deep caverns.
+    """
+    from sim.hall import score
+
+    lines: list[Line] = [(row, config.menu_title_color) for row in block_text("HALL")]
+    lines.append(("", config.menu_dim_color))
+    if not entries:
+        lines.append(("nothing has died down there yet", config.menu_dim_color))
+        lines.append(("", config.menu_dim_color))
+        lines.append(("esc back", config.menu_dim_color))
+        return lines
+
+    lines.append(
+        (_hall_row([heading for heading, _, _ in HALL_COLUMNS]), config.menu_dim_color)
+    )
+    for place, entry in enumerate(entries, start=1):
+        colour = config.menu_pick_color if place == 1 else config.menu_text_color
+        lines.append(
+            (
+                _hall_row(
+                    [
+                        f"{place}.",
+                        entry.level,
+                        entry.kills,
+                        entry.depth,
+                        entry.ticks,
+                        entry.archetype[:24],
+                        entry.killer[:13],
+                        score(entry),
+                    ]
+                ),
+                colour,
             )
         )
     lines.append(("", config.menu_dim_color))

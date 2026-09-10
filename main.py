@@ -15,6 +15,7 @@ Controls
     space      pause
     1 2 3      speed 1x / 4x / 16x
     F1..F5     overlays: fov, memory age, threat, plan, frontier
+    b          show what is in the bag
     h          toggle the HUD
     F10        borderless window
     F11        borderless fullscreen
@@ -35,7 +36,13 @@ import pygame
 from agent.fov import compute_fov
 from config import DEFAULT_CONFIG, Config
 from render.fog import fog_grid
-from render.hud import chronicle_lines, equipment_lines, help_lines, hud_lines
+from render.hud import (
+    bag_lines,
+    chronicle_lines,
+    equipment_lines,
+    help_lines,
+    hud_lines,
+)
 import settings_store
 from render.menu import (
     ENTRIES,
@@ -46,10 +53,12 @@ from render.menu import (
     default_settings,
     menu_lines,
     move_selection,
+    hall_lines,
     settings_lines,
     soak_lines,
     stored_values,
 )
+from sim import hall
 from render.flourish import speckle_moss
 from render.palette import background_grid, item_color, monster_color, terrain_color
 from render.overlays import OVERLAY_NAMES, apply_overlay
@@ -92,6 +101,7 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
     paused = False
     overlay = None
     show_hud = True
+    show_bag = False
     running = True
     in_menu = True
     in_settings = False
@@ -103,11 +113,30 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
     speed_index = _speed_index_for(settings, config)
     soak_results = None
     soaking = False
+    in_hall = False
+    hall_entries = hall.load()
     deaths_seen = 0
 
     while running:
         dt = clock.tick(config.max_fps) / 1000.0
         accumulator = min(accumulator + dt, config.max_frame_seconds)
+
+        if in_hall:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.VIDEORESIZE:
+                    screen.resize(event.size)
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_F11:
+                        screen.toggle_fullscreen()
+                    elif event.key == pygame.K_F10:
+                        screen.toggle_borderless()
+                    elif event.key == pygame.K_ESCAPE:
+                        in_hall = False
+            screen.draw_centered(hall_lines(hall_entries, config), big_lines=5)
+            screen.present()
+            continue
 
         if soaking:
             for event in pygame.event.get():
@@ -201,6 +230,9 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
                         elif choice == "soak":
                             soaking = True
                             soak_results = None
+                        elif choice == "hall of fame":
+                            hall_entries = hall.load()
+                            in_hall = True
                         else:
                             if choice == "new world" or agent is None:
                                 if choice == "new world" and agent is not None:
@@ -239,6 +271,8 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
                     overlay = None if overlay == chosen else chosen
                 elif event.key == pygame.K_h:
                     show_hud = not show_hud
+                elif event.key == pygame.K_b:
+                    show_bag = not show_bag
                 elif event.key == pygame.K_n:
                     seed += 1
                     world, agent, rng = _new_world(config, seed)
@@ -252,6 +286,11 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
                 for _ in range(speed):
                     tick(agent, world, rng, config)
             accumulator -= tick_duration
+
+        while agent.fallen:
+            # The tick records lives; writing them down is this loop's job,
+            # which keeps sim/ free of file handling.
+            hall_entries = hall.remember(agent.fallen.pop(0))
 
         if should_restart(config, agent.deaths, deaths_seen):
             # Death is where a run ends, if that is how it has been set up:
@@ -313,7 +352,10 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
         )
         if show_hud:
             screen.draw_panel(hud_lines(agent, len(world), config, speed, paused))
-            screen.draw_panel(chronicle_lines(agent, config), right=False, top=False)
+            if show_bag:
+                screen.draw_panel(bag_lines(agent, config), right=False, top=True)
+            else:
+                screen.draw_panel(chronicle_lines(agent, config), right=False, top=False)
             screen.draw_panel(
                 equipment_lines(agent, config) + [("", config.hud_color)] + help_lines(config),
                 right=True,

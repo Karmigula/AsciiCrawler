@@ -59,6 +59,9 @@ def take_turns(
             landed = monster_hits_agent(
                 monster, agent.stats, agent.derived, rng, config
             )
+            if landed:
+                # Whatever struck last gets the credit on the tombstone.
+                agent.last_wound = f"a {monster.kind.key}"
             damage += landed
             derived = getattr(agent, "derived", None)
             if derived is not None:

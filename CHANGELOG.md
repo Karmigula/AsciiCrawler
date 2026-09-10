@@ -52,6 +52,14 @@ Nobody plays it.
 - **A HUD** with health, level, current goal, what it is wearing, and a rolling
   log of what just happened: *killed the rat*, *found a cruel sword*, *stepped
   in a trap*, *died in the dark*.
+- **A hall of fame.** Every life the creature has lived, best first: how far it
+  got, what it had become, and what finally killed it. *level 6, 140 kills, 820
+  deep - a troll.* Ranked by a score that counts depth for more than levels,
+  because a level 9 that never left the first ring is a lesser run than a
+  modest one that reached the deep caverns.
+- **Press `b` to see the bag** - not just how many spares it is carrying, but
+  what each one would change if it wore it, so you can see why it does not.
+  Better loot reads brighter.
 - **Five overlays** (`F1`–`F5`) that answer "why is it doing that?" by drawing
   what the agent *believes* rather than what is true: what it can see, how
   stale its memory is, where it thinks danger is, what it plans to walk, and

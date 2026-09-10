@@ -30,7 +30,7 @@ BLOCKED = "blocked"
 
 from agent.fov import compute_fov
 from agent.goals import DIRS_8, ExploreGoal, FleeGoal, LootGoal
-from agent.loadout import best_assignment, derive, effective_config, score
+from agent.loadout import archetype, best_assignment, derive, effective_config, score
 from agent.memory import Memory
 from config import Config
 from world.tiles import Tile
@@ -39,6 +39,7 @@ from sim.ai import take_turns
 from sim.combat import agent_hits_monster, xp_for
 from sim import chronicle as story
 from sim.chronicle import Chronicle
+from sim.hall import Fallen
 from sim.perks import on_kill
 from sim.items import GRAVE
 
@@ -81,6 +82,12 @@ class AgentState:
     deaths: int = 0
     traps_found: int = 0
     traps_sprung: int = 0
+    # Per-life, reset on death: a hall of fame entry is one life, not a career.
+    life_kills: int = 0
+    life_depth: int = 0
+    life_started: int = 0
+    last_wound: str = "the dark"
+    fallen: list = field(default_factory=list)
     graves_robbed: int = 0
     grave_sites: set = field(default_factory=set)
     heat_damage: int = 0
@@ -103,6 +110,9 @@ def tick(agent: AgentState, world, rng: random.Random, config: Config) -> None:
     _quaff(agent, config)
     _burn(agent, world, config)
     _spot_traps(agent, world, rng, config)
+    agent.life_depth = max(
+        agent.life_depth, int((agent.x * agent.x + agent.y * agent.y) ** 0.5)
+    )
     _forget(agent, mind)
     _scan_active(agent, world, config)
     _monsters_act(agent, world, rng, config)
@@ -318,6 +328,7 @@ def _spring_trap(agent: AgentState, world, config: Config) -> None:
     if trap is None or not trap.hidden:
         return
     trap.hidden = False
+    agent.last_wound = "a trap"
     agent.damage_taken += agent.stats.take(config.trap_damage)
     agent.traps_sprung += 1
     agent.log.record(agent.tick_count, story.sprang_trap(config.trap_damage))
@@ -348,6 +359,7 @@ def _kill(agent: AgentState, monster, world, rng: random.Random, config: Config)
     where = (monster.x, monster.y)
     world.remove_entity(monster)
     agent.kills += 1
+    agent.life_kills += 1
     agent.log.record(agent.tick_count, story.killed(monster))
     if not agent.stats.alive:
         # The corpse still counts, but a dead agent does not collect on it.
@@ -389,6 +401,25 @@ def _resolve_death(agent: AgentState, world, config: Config) -> None:
     agent.backpack = []
     agent.grave_sites.add((agent.x, agent.y))
     agent.log.record(agent.tick_count, story.died())
+    # The life that just ended, before anything is reset. Held on the agent
+    # rather than written here: the tick knows nothing about files, and this
+    # module stays runnable headless in a test.
+    agent.fallen.append(
+        Fallen(
+            seed=getattr(world, "seed", 0),
+            level=agent.stats.level,
+            kills=agent.life_kills,
+            depth=agent.life_depth,
+            ticks=agent.tick_count - agent.life_started,
+            killer=agent.last_wound,
+            archetype=archetype(agent.derived, config) if agent.derived else "novice",
+            gold=agent.gold,
+        )
+    )
+    agent.life_kills = 0
+    agent.life_depth = 0
+    agent.life_started = agent.tick_count
+    agent.last_wound = "the dark"
     agent.deaths += 1
     agent.stats = Stats.starting(config)
     agent.fleer.stand_down()
@@ -474,6 +505,7 @@ def _burn(agent: AgentState, world, config: Config) -> None:
         return
     for dx, dy in DIRS_8:
         if world.tile_at(agent.x + dx, agent.y + dy) is Tile.LAVA:
+            agent.last_wound = "the lava"
             agent.heat_damage += agent.stats.take(config.lava_heat_damage)
             agent.damage_taken += config.lava_heat_damage
             return

@@ -29,11 +29,12 @@ See [CHANGELOG.md](CHANGELOG.md) for what is in this release.
 | `space` | pause |
 | `1` `2` `3` | speed 1x / 4x / 16x |
 | `F1`–`F5` | overlays: fov, memory age, threat, plan, frontier |
+| `b` | show the bag |
 | `h` | toggle HUD |
 | `n` | new world (fresh seed, fresh creature) |
 | `p` | screenshot |
 | `F10` | borderless window |
-| menu | settings, and a soak you can run without a terminal |
+| menu | settings, a soak you can run without a terminal, and the hall of fame |
 | `F11` | borderless fullscreen (fills the screen it is on) |
 
 The overlays are the interesting part: they answer "why is it doing that?" by

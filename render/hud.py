@@ -169,6 +169,53 @@ def equipment_lines(agent, config) -> list[Line]:
     return lines
 
 
+RARITY_TINT = {
+    "common": "hud_dim_color",
+    "uncommon": "hud_good_color",
+    "rare": "hud_color",
+    "epic": "hud_accent_color",
+    "legendary": "menu_pick_color",
+}
+
+
+def rarity_color(rarity: str, config):
+    """Better loot reads brighter, so a legendary is obvious in a list."""
+    return getattr(config, RARITY_TINT.get(rarity, "hud_color"), config.hud_color)
+
+
+def bag_lines(agent, config) -> list[Line]:
+    """What the agent is carrying but not wearing.
+
+    The HUD only ever said "6 spare", which is the least interesting true thing
+    that could be said about a bag full of cursed rings. Each spare is shown
+    with what it would add or take away if it were worn, because that is the
+    question a watcher actually has: why is it carrying that and not using it?
+    """
+    if not agent.backpack:
+        return [("bag  empty", config.hud_dim_color)]
+
+    lines: list[Line] = [(f"bag  {len(agent.backpack)} spare", config.hud_accent_color)]
+    for item in agent.backpack:
+        worn = agent.equipped.get(item.kind.slot)
+        delta = ""
+        if worn is not None:
+            attack = item.attack - worn.attack
+            defense = item.defense - worn.defense
+            parts = []
+            if attack:
+                parts.append(f"{attack:+d} atk")
+            if defense:
+                parts.append(f"{defense:+d} def")
+            delta = "  " + " ".join(parts) if parts else "  sidegrade"
+        else:
+            delta = "  slot empty"
+        for index, text in enumerate(
+            wrap(f"{item.kind.glyph} {item.name}{delta}", config.hud_max_chars - 1)
+        ):
+            lines.append((" " + text if index == 0 else "   " + text, rarity_color(item.rarity, config)))
+    return lines
+
+
 def help_lines(config) -> list[Line]:
     """The key map, shown when nothing else is competing for the corner."""
     return [
@@ -176,7 +223,7 @@ def help_lines(config) -> list[Line]:
         ("F1 fov  F2 age  F3 threat", config.hud_dim_color),
         ("F4 plan F5 frontier", config.hud_dim_color),
         ("n new world   p screenshot", config.hud_dim_color),
-        ("F10 borderless  F11 fullscreen", config.hud_dim_color),
+        ("b bag   F10/F11 window", config.hud_dim_color),
         ("esc menu", config.hud_dim_color),
     ]
 

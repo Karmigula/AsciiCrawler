@@ -3,7 +3,7 @@
 import random
 
 from config import DEFAULT_CONFIG
-from render.hud import equipment_lines, health_color, help_lines, hud_lines
+from render.hud import bag_lines, equipment_lines, health_color, help_lines, hud_lines
 from sim.tick import AgentState, tick
 from world.tiles import Tile
 
@@ -153,3 +153,53 @@ def test_short_names_do_not_gain_a_second_line():
     agent = _running_agent()
     plain = [t for t, _ in equipment_lines(agent, DEFAULT_CONFIG)]
     assert sum(1 for t in plain if "weapon" in t) == 1
+
+
+def _spare(base, *affix_keys, rarity="rare"):
+    from sim.affixes import BY_KEY
+    from sim.items import ITEMS
+    from world.populate import Item
+
+    kinds = {k.key: k for k in ITEMS}
+    return Item(
+        kind=kinds[base], x=0, y=0, rarity=rarity,
+        affixes=tuple(BY_KEY[k] for k in affix_keys),
+    )
+
+
+def test_an_empty_bag_says_so():
+    body = _text(bag_lines(_running_agent(), DEFAULT_CONFIG))
+    assert "empty" in body
+
+
+def test_the_bag_says_what_each_spare_would_change():
+    """The question a watcher has is why it is carrying that and not using it."""
+    agent = _running_agent()
+    agent.equipped["weapon"] = _spare("weapon", "cruel")
+    agent.backpack = [_spare("weapon", "dull")]
+    body = _text(bag_lines(agent, DEFAULT_CONFIG))
+    assert "dull weapon" in body
+    assert "atk" in body and "-" in body, "the downgrade should be visible"
+
+
+def test_a_spare_for_an_empty_slot_says_the_slot_is_empty():
+    agent = _running_agent()
+    agent.equipped.pop("ring", None)
+    agent.backpack = [_spare("ring", "keen")]
+    assert "slot empty" in _text(bag_lines(agent, DEFAULT_CONFIG))
+
+
+def test_better_loot_reads_brighter():
+    from render.hud import rarity_color
+
+    common = rarity_color("common", DEFAULT_CONFIG)
+    legendary = rarity_color("legendary", DEFAULT_CONFIG)
+    assert common != legendary
+    assert sum(legendary) > sum(common), "a legendary should stand out in a list"
+
+
+def test_bag_lines_stay_inside_the_panel():
+    agent = _running_agent()
+    agent.backpack = [_spare("ring", "sickly", "farsighted", "vampiric", "curious")]
+    for text, _ in bag_lines(agent, DEFAULT_CONFIG):
+        assert len(text) <= DEFAULT_CONFIG.hud_max_chars
