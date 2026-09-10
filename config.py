@@ -165,6 +165,11 @@ class Config:
     # same monster again and again. 0.35 gives 3 flights averaging 18 ticks
     # and half again as many kills - fewer, longer, legible flights.
     flee_release: float = 0.35
+    # After being cornered - frightened with nowhere calmer to go - stop asking
+    # for this many ticks. Without it the agent stands down and re-triggers on
+    # the very next tick, flickering in and out of flight while it works its
+    # way out of a bad spot.
+    flee_cornered_cooldown: int = 40
 
     # memory decay: knowledge expires, so the world goes unknown again
     memory_ttl: int = 3000  # ticks before a tile is forgotten outright

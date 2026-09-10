@@ -140,3 +140,51 @@ def test_traps_are_placed_hidden_by_population():
     traps = [t for cx in range(4) for t in store.get_chunk(cx, 0).contents.traps]
     assert traps
     assert all(t.hidden for t in traps)
+
+
+def test_a_trap_in_the_only_doorway_does_not_cage_the_agent_forever():
+    """A dead-end corridor whose one opening holds a known trap used to pin the
+    agent for the rest of the run - and standing still refreshed that trap's
+    record every tick, so the knowledge caging it never expired either."""
+    from world.tiles import Tile
+
+    class Corridor:
+        """Two floor tiles in solid rock: (4,4) and the trapped way out."""
+
+        def tile_at(self, x, y):
+            return Tile.FLOOR if (x, y) in {(4, 4), (5, 4)} else Tile.WALL
+
+        def ensure_loaded(self, position):
+            pass
+
+        def trap_at(self, x, y):
+            return trap if (x, y) == (5, 4) else None
+
+        def traps_near(self, origin, radius):
+            return [trap]
+
+    trap = Trap(x=5, y=4)
+    world = Corridor()
+    agent = AgentState(x=4, y=4)
+    rng = random.Random(1)
+    tick(agent, world, rng, ALWAYS)  # spots the trap immediately
+    assert agent.memory.believes_hazard((5, 4))
+
+    for _ in range(20):
+        tick(agent, world, rng, ALWAYS)
+        if (agent.x, agent.y) != (4, 4):
+            break
+
+    assert (agent.x, agent.y) == (5, 4), "better to take the trap than never move"
+
+
+def test_a_known_trap_is_still_avoided_when_there_is_another_way():
+    """The escape valve must not make the agent careless in open ground."""
+    world = TrapWorld([Trap(x=21, y=20, hidden=False)])
+    agent = AgentState(x=20, y=20)
+    rng = random.Random(1)
+    tick(agent, world, rng, ALWAYS)
+    assert agent.memory.believes_hazard((21, 20))
+    for _ in range(30):
+        tick(agent, world, rng, ALWAYS)
+        assert (agent.x, agent.y) != (21, 20), "open ground: it should walk around"

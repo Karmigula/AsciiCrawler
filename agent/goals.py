@@ -169,9 +169,16 @@ class FleeGoal:
     active: bool = False
     path: list[Position] = field(default_factory=list)
     flights: int = 0
+    cornered_until: int = -1
 
     def wants_control(
-        self, start: Position, memory: Memory, stats, config: Config, derived=None
+        self,
+        start: Position,
+        memory: Memory,
+        stats,
+        config: Config,
+        derived=None,
+        tick: int = 0,
     ) -> bool:
         """True while the believed danger here is more than the agent will take.
 
@@ -179,6 +186,8 @@ class FleeGoal:
         drops well under the trigger, so the agent does not stutter in and out
         of flight on the boundary.
         """
+        if tick < self.cornered_until:
+            return False  # recently cornered: give it a moment to get clear
         here = danger(memory, start, config)
         threshold = flee_threshold(stats, config, derived)
         if self.active:
@@ -225,10 +234,15 @@ class FleeGoal:
         self.path = rebuild_path(came_from, best, start) if best != start else []
         return self.path
 
-    def stand_down(self) -> None:
-        """Danger has passed: hand control back to EXPLORE."""
+    def stand_down(self, cornered_until: int = -1) -> None:
+        """Danger has passed - or cannot be escaped: hand control back.
+
+        `cornered_until` suppresses further flight for a while, which is what
+        the caller passes when the agent gave up rather than got clear.
+        """
         self.active = False
         self.path = []
+        self.cornered_until = max(self.cornered_until, cornered_until)
 
     def drop_plan(self) -> None:
         """Blocked mid-flight: forget the route, keep running."""

@@ -120,3 +120,28 @@ def test_threat_discounts_an_explore_candidate():
     )
     assert safe is not None and guarded is not None
     assert guarded[0] != safe[0] or guarded[0][0] < 29
+
+
+def test_a_cornered_agent_is_not_asked_again_immediately():
+    """Standing down and re-triggering next tick just flickers in and out of
+    flight while the agent works its way out of a bad spot."""
+    goal = FleeGoal()
+    stats = Stats.starting(DEFAULT_CONFIG)
+    scary = _corridor(entities={(6, 1): "D"})
+    assert goal.wants_control((5, 1), scary, stats, DEFAULT_CONFIG, None, tick=10)
+
+    goal.stand_down(cornered_until=10 + DEFAULT_CONFIG.flee_cornered_cooldown)
+
+    assert not goal.wants_control((5, 1), scary, stats, DEFAULT_CONFIG, None, tick=11)
+    assert not goal.wants_control((5, 1), scary, stats, DEFAULT_CONFIG, None, tick=40)
+    later = 10 + DEFAULT_CONFIG.flee_cornered_cooldown + 1
+    assert goal.wants_control((5, 1), scary, stats, DEFAULT_CONFIG, None, tick=later)
+
+
+def test_an_ordinary_stand_down_carries_no_cooldown():
+    goal = FleeGoal()
+    stats = Stats.starting(DEFAULT_CONFIG)
+    scary = _corridor(entities={(6, 1): "D"})
+    goal.active = True
+    goal.stand_down()
+    assert goal.wants_control((5, 1), scary, stats, DEFAULT_CONFIG, None, tick=1)

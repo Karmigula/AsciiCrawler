@@ -246,20 +246,31 @@ def _act(agent: AgentState, world, rng: random.Random, config: Config) -> None:
         for dx, dy in DIRS_8
         if _wander_ok(agent, dx, dy)
     ]
+    if not options:
+        # Every way out is a tile the agent knows is trapped. A dead-end
+        # corridor whose only opening holds a trap would otherwise cage it for
+        # the rest of the run - and standing still refreshes that trap's record
+        # every tick, so the knowledge caging it never expires either. Six
+        # points of damage is cheaper than never moving again.
+        options = [
+            (agent.x + dx, agent.y + dy)
+            for dx, dy in DIRS_8
+            if _wander_ok(agent, dx, dy, allow_hazard=True)
+        ]
     if options:
         _try_step(agent, rng.choice(options), world, rng, config)
 
 
-def _wander_ok(agent: AgentState, dx: int, dy: int) -> bool:
+def _wander_ok(agent: AgentState, dx: int, dy: int, allow_hazard: bool = False) -> bool:
     if dx != 0 and dy != 0 and not (
         agent.memory.believes_passable((agent.x + dx, agent.y))
         and agent.memory.believes_passable((agent.x, agent.y + dy))
     ):
         return False
     target = (agent.x + dx, agent.y + dy)
-    return agent.memory.believes_passable(target) and not agent.memory.believes_hazard(
-        target
-    )
+    if not agent.memory.believes_passable(target):
+        return False
+    return allow_hazard or not agent.memory.believes_hazard(target)
 
 
 def _try_step(
@@ -527,7 +538,9 @@ def _think(agent: AgentState, rng: random.Random, config: Config) -> None:
     to a troll, and "why is it doing that" should be answerable by looking.
     """
     here = (agent.x, agent.y)
-    if agent.fleer.wants_control(here, agent.memory, agent.stats, config, agent.derived):
+    if agent.fleer.wants_control(
+        here, agent.memory, agent.stats, config, agent.derived, agent.tick_count
+    ):
         agent.explorer.drop_plan()
         agent.looter.clear()
         if agent.fleer.decide(here, agent.memory, config):
@@ -538,9 +551,10 @@ def _think(agent: AgentState, rng: random.Random, config: Config) -> None:
         # something it cannot get away from, the agent would otherwise stay
         # pinned for the rest of the run - the release threshold is a fraction
         # of the trigger, so danger it cannot escape never falls far enough to
-        # let go. Hand the wheel back and get on with something.
-        agent.fleer.stand_down()
-    if agent.fleer.active:
+        # let go. Hand the wheel back and get on with something, and do not ask
+        # again for a moment - re-triggering next tick just flickers.
+        agent.fleer.stand_down(agent.tick_count + config.flee_cornered_cooldown)
+    elif agent.fleer.active:
         agent.fleer.stand_down()
     if agent.looter.path:
         agent.goal_name = "LOOT"
