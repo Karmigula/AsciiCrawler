@@ -112,6 +112,13 @@ class Config:
         }
     )
 
+    # title screen
+    menu_title_font_size: int = 22  # the block letters get their own size
+    menu_title_color: tuple[int, int, int] = (214, 170, 92)
+    menu_text_color: tuple[int, int, int] = (206, 206, 216)
+    menu_pick_color: tuple[int, int, int] = (250, 232, 160)
+    menu_dim_color: tuple[int, int, int] = (116, 116, 132)
+
     # HUD and overlays
     hud_color: tuple[int, int, int] = (200, 200, 210)
     hud_dim_color: tuple[int, int, int] = (110, 110, 125)

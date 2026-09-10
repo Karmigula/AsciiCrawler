@@ -10,6 +10,9 @@ means it can be wrong, and being wrong is where the interesting behaviour comes
 from. It will flee a troll that wandered off ten minutes ago, walk into one
 that arrived after it looked away, and re-explore ground it has forgotten.
 
+It opens on a title screen. The window is resizable — a bigger window shows
+more world rather than a magnified slice of it.
+
 Double-click `run.bat`, or:
 
 ```
@@ -22,13 +25,14 @@ See [CHANGELOG.md](CHANGELOG.md) for what is in this release.
 
 | key | |
 |---|---|
-| `esc` | quit |
+| `esc` | back to the title screen (again to quit) |
 | `space` | pause |
 | `1` `2` `3` | speed 1x / 4x / 16x |
 | `F1`–`F5` | overlays: fov, memory age, threat, plan, frontier |
 | `h` | toggle HUD |
 | `n` | new world (fresh seed, fresh creature) |
 | `p` | screenshot |
+| `F11` | borderless fullscreen |
 
 The overlays are the interesting part: they answer "why is it doing that?" by
 drawing what the agent *believes* rather than what is true.

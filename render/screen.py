@@ -5,6 +5,7 @@ state handed to it (cells of glyph+color pairs or None for blank, positions)
 and never imports world/sim/agent modules.
 """
 
+import os
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -24,15 +25,78 @@ class Screen:
     def __init__(self, config: Config) -> None:
         pygame.init()
         self._config = config
-        self._window = pygame.display.set_mode((config.window_width, config.window_height))
         pygame.display.set_caption(config.window_title)
         self._font = self._load_font()
         self._hud_font = self._load_font(config.font_size - 2)
+        self._title_font = self._load_font(config.menu_title_font_size)
         self._glyph_cache: dict[tuple[str, Color], pygame.Surface] = {}
-        self._cols = config.window_width // config.cell_size
-        self._rows = config.window_height // config.cell_size
-        self._margin_x = (config.window_width - self._cols * config.cell_size) // 2
-        self._margin_y = (config.window_height - self._rows * config.cell_size) // 2
+        self._fullscreen = False
+        self._windowed = (config.window_width, config.window_height)
+        self._configure(self._windowed, pygame.RESIZABLE)
+
+    def _configure(self, size: tuple[int, int], flags: int) -> None:
+        """Open the window at a size and recompute the glyph grid for it.
+
+        A bigger window shows more world rather than a magnified slice of it -
+        the glyph size is what the font is, and stretching it would make an
+        ascii grid look like a photograph of one.
+        """
+        self._window = pygame.display.set_mode(size, flags)
+        self._width, self._height = self._window.get_size()
+        cell = self._config.cell_size
+        self._cols = max(1, self._width // cell)
+        self._rows = max(1, self._height // cell)
+        self._margin_x = (self._width - self._cols * cell) // 2
+        self._margin_y = (self._height - self._rows * cell) // 2
+
+    def resize(self, size: tuple[int, int]) -> None:
+        """Handle the window being dragged to a new size."""
+        if not self._fullscreen:
+            self._windowed = size
+        self._configure(size, self._window.get_flags())
+
+    def _desktop_size(self) -> tuple[int, int]:
+        """The size of the display this window is on.
+
+        `pygame.display.Info()` is the obvious call and the wrong one: once a
+        window exists it reports *that window's* size, so using it for
+        fullscreen resizes the window to the size it already is. Nothing
+        happens, which is exactly what it looked like.
+        """
+        try:
+            sizes = pygame.display.get_desktop_sizes()
+            if sizes:
+                index = getattr(pygame.display, "get_display_index", lambda: 0)()
+                return sizes[min(index, len(sizes) - 1)]
+        except (AttributeError, pygame.error):
+            pass
+        info = pygame.display.Info()  # last resort, and only correct pre-window
+        return info.current_w, info.current_h
+
+    def toggle_fullscreen(self) -> None:
+        """Borderless fullscreen at the desktop resolution, and back again.
+
+        Borderless rather than exclusive: this is a thing to leave running on a
+        second monitor, and an exclusive mode switch fights every other window
+        on the machine for the display.
+        """
+        self._fullscreen = not self._fullscreen
+        if self._fullscreen:
+            # Pin to the top-left corner. A borderless window the size of the
+            # desktop that SDL has centred hangs off the bottom-right by
+            # whatever the title bar would have been.
+            os.environ["SDL_VIDEO_WINDOW_POS"] = "0,0"
+            self._configure(self._desktop_size(), pygame.NOFRAME)
+        else:
+            os.environ.pop("SDL_VIDEO_WINDOW_POS", None)
+            os.environ["SDL_VIDEO_CENTERED"] = "1"
+            self._configure(self._windowed, pygame.RESIZABLE)
+            os.environ.pop("SDL_VIDEO_CENTERED", None)
+
+    @property
+    def size(self) -> tuple[int, int]:
+        """Current window size in pixels."""
+        return self._width, self._height
 
     @property
     def view_dims(self) -> tuple[int, int]:
@@ -104,8 +168,8 @@ class Screen:
         config = self._config
         height = len(lines) * config.hud_line_height + 12
         width = config.hud_panel_width
-        x = config.window_width - width if right else 0
-        y = 0 if top else config.window_height - height
+        x = self._width - width if right else 0
+        y = 0 if top else self._height - height
         backing = pygame.Surface((width, height))
         backing.set_alpha(205)
         backing.fill(config.background_color)
@@ -115,6 +179,33 @@ class Screen:
                 continue
             surface = self._hud_font.render(text, True, color)
             self._window.blit(surface, (x + 8, y + 6 + index * config.hud_line_height))
+
+    def draw_centered(self, lines, big_lines: int = 0) -> None:
+        """Clear the window and draw lines centred in it, top down.
+
+        Used for the title screen, which owns the whole window rather than
+        sitting in a corner of it like the HUD panels do. The first
+        `big_lines` are drawn in the title font, which is what makes the
+        block-letter art read as a title rather than as more text.
+
+        Centred vertically as well as horizontally: the block is measured
+        first, so adding a menu entry does not leave the whole screen sitting
+        too high.
+        """
+        config = self._config
+        self._window.fill(config.background_color)
+        heights = [
+            config.hud_line_height + (config.menu_title_font_size // 2 if i < big_lines else 0)
+            for i in range(len(lines))
+        ]
+        y = max(0, (self._height - sum(heights)) // 2)
+        for index, (text, color) in enumerate(lines):
+            font = self._title_font if index < big_lines else self._hud_font
+            if text:
+                surface = font.render(text, True, color)
+                x = (self._width - surface.get_width()) // 2
+                self._window.blit(surface, (x, y))
+            y += heights[index]
 
     def screenshot(self, path) -> None:
         """Save the current frame to a png."""

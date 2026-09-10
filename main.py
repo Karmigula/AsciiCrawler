@@ -6,12 +6,17 @@ camera (built through `tile_at`), shades it through the same memory the brain
 uses, optionally recolours it through a debug overlay, and draws the agent and
 the HUD on top. No decisions are made here.
 
+The window opens on the title screen; `esc` goes back to it from the world,
+and `esc` again closes the game. The creature keeps running while the menu is
+up - it is paused, not discarded, so "resume" resumes.
+
 Controls
-    esc        quit
+    esc        back to the title screen (and from there, quit)
     space      pause
     1 2 3      speed 1x / 4x / 16x
     F1..F5     overlays: fov, memory age, threat, plan, frontier
     h          toggle the HUD
+    F11        borderless fullscreen
     n          new world (fresh seed, fresh creature)
     p          screenshot
 
@@ -29,6 +34,7 @@ from agent.fov import compute_fov
 from config import DEFAULT_CONFIG, Config
 from render.fog import fog_grid
 from render.hud import chronicle_lines, equipment_lines, help_lines, hud_lines
+from render.menu import ENTRIES, TITLE_ROWS, menu_lines, move_selection
 from render.flourish import speckle_moss
 from render.palette import background_grid, item_color, monster_color, terrain_color
 from render.overlays import OVERLAY_NAMES, apply_overlay
@@ -55,7 +61,7 @@ def _new_world(config: Config, seed: int):
 
 def main(config: Config = DEFAULT_CONFIG) -> None:
     seed = config.world_seed
-    world, agent, rng = _new_world(config, seed)
+    world, agent, rng = None, None, None
     palette = {
         Tile.WALL.glyph: config.wall_color,
         Tile.FLOOR.glyph: config.floor_color,
@@ -71,16 +77,56 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
     overlay = None
     show_hud = True
     running = True
+    in_menu = True
+    selected = 0
 
     while running:
         dt = clock.tick(config.max_fps) / 1000.0
         accumulator = min(accumulator + dt, config.max_frame_seconds)
+
+        if in_menu:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.VIDEORESIZE:
+                    screen.resize(event.size)
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_F11:
+                        screen.toggle_fullscreen()
+                    elif event.key == pygame.K_ESCAPE:
+                        running = False
+                    elif event.key in (pygame.K_UP, pygame.K_w):
+                        selected = move_selection(selected, -1)
+                    elif event.key in (pygame.K_DOWN, pygame.K_s):
+                        selected = move_selection(selected, 1)
+                    elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                        choice = ENTRIES[selected][0]
+                        if choice == "quit":
+                            running = False
+                        else:
+                            if choice == "new world" or agent is None:
+                                if choice == "new world" and agent is not None:
+                                    seed += 1
+                                world, agent, rng = _new_world(config, seed)
+                            accumulator = 0.0
+                            in_menu = False
+            screen.draw_centered(
+                menu_lines(selected, seed, config, agent is not None),
+                big_lines=TITLE_ROWS,
+            )
+            screen.present()
+            continue
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            elif event.type == pygame.VIDEORESIZE:
+                screen.resize(event.size)
             elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    running = False
+                if event.key == pygame.K_F11:
+                    screen.toggle_fullscreen()
+                elif event.key == pygame.K_ESCAPE:
+                    in_menu = True  # back to the title screen, not out of the game
                 elif event.key == pygame.K_SPACE:
                     paused = not paused
                 elif event.key in (pygame.K_1, pygame.K_2, pygame.K_3):
