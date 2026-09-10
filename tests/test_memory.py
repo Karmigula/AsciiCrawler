@@ -184,3 +184,28 @@ def test_the_indexes_agree_with_the_records_they_summarise():
     assert memory.entity_coords() == from_records
     items_from_records = {c for c in memory.known() if memory.snapshot(c)[1] is not None}
     assert memory.item_coords() == items_from_records
+
+
+def test_ground_that_was_lit_but_not_seen_keeps_its_snapshots():
+    """Lava lights terrain the agent has no line of sight to. Refreshing that
+    terrain must not erase the monster it remembers standing there."""
+    memory = Memory()
+    memory.observe({(5, 5): Tile.FLOOR}, tick=1, entities={(5, 5): "T"})
+    assert memory.snapshot((5, 5))[0] == "T"
+
+    # Seen-set excludes (5,5): it is only lit, not observed.
+    memory.observe({(5, 5): Tile.FLOOR}, tick=2, snapshot_coords={(9, 9)})
+
+    assert memory.snapshot((5, 5))[0] == "T", "a lit tile must not wipe the sighting"
+    assert memory.entity_coords() == {(5, 5)}
+    # And light must not reset the decay clock either: a record refreshed every
+    # tick never expires, and the monster remembered on it becomes an immortal
+    # phantom that can pin the agent in flight for the rest of the run.
+    assert memory.age((5, 5), 2) == 1
+
+
+def test_a_tile_actually_seen_still_clears_its_snapshot():
+    memory = Memory()
+    memory.observe({(5, 5): Tile.FLOOR}, tick=1, entities={(5, 5): "T"})
+    memory.observe({(5, 5): Tile.FLOOR}, tick=2, snapshot_coords={(5, 5)})
+    assert memory.snapshot((5, 5))[0] is None

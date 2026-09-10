@@ -32,23 +32,31 @@ def test_variance_stays_inside_its_configured_band():
     assert min(rolls) >= 4 and max(rolls) <= 7
 
 
+def _bare(config=NO_VARIANCE):
+    """The derived bundle for an agent wearing nothing."""
+    from agent.loadout import derive
+
+    return derive(Stats.starting(config), {}, config)
+
+
 def test_the_agent_wounds_what_it_hits():
     monster = _monster("O")
     before = monster.hp
-    dealt = agent_hits_monster(Stats.starting(NO_VARIANCE), monster, random.Random(1), NO_VARIANCE)
+    dealt = agent_hits_monster(_bare(), monster, random.Random(1), NO_VARIANCE)
     assert dealt > 0
     assert monster.hp == before - dealt
 
 
 def test_a_monster_wounds_the_agent():
     stats = Stats.starting(NO_VARIANCE)
-    dealt = monster_hits_agent(_monster("T"), stats, random.Random(1), NO_VARIANCE)
+    dealt = monster_hits_agent(_monster("T"), stats, _bare(), random.Random(1), NO_VARIANCE)
     assert stats.hp == stats.max_hp - dealt
 
 
 def test_armour_blunts_a_weak_blow_but_never_stops_it():
-    stats = Stats.starting(replace(NO_VARIANCE, agent_defense=100))
-    dealt = monster_hits_agent(_monster("r"), stats, random.Random(1), NO_VARIANCE)
+    config = replace(NO_VARIANCE, agent_defense=100)
+    stats = Stats.starting(config)
+    dealt = monster_hits_agent(_monster("r"), stats, _bare(config), random.Random(1), NO_VARIANCE)
     assert dealt == 1
 
 
@@ -127,3 +135,29 @@ def test_levelling_still_heals_a_wounded_agent():
     stats.take(20)
     stats.gain_xp(stats.xp_to_next(DEFAULT_CONFIG), DEFAULT_CONFIG)
     assert stats.hp == stats.max_hp
+
+
+
+def test_worn_gear_actually_changes_the_blows():
+    """The bug this pins: gear used to raise the HUD number and nothing else."""
+    from agent.loadout import derive
+    from sim.affixes import BY_KEY
+    from sim.items import ITEMS
+    from world.populate import Item
+
+    kinds = {k.key: k for k in ITEMS}
+    stats = Stats.starting(NO_VARIANCE)
+    sword = Item(kind=kinds["weapon"], x=0, y=0, rarity="rare", affixes=(BY_KEY["cruel"],))
+    armour = Item(kind=kinds["armor"], x=0, y=0, rarity="rare", affixes=(BY_KEY["bulwark"],))
+    armed = derive(stats, {"weapon": sword, "armor": armour}, NO_VARIANCE)
+    naked = derive(stats, {}, NO_VARIANCE)
+
+    unarmed_hit = agent_hits_monster(naked, _monster("T"), random.Random(1), NO_VARIANCE)
+    armed_hit = agent_hits_monster(armed, _monster("T"), random.Random(1), NO_VARIANCE)
+    assert armed_hit > unarmed_hit, "a cruel sword must hit harder"
+
+    exposed = Stats.starting(NO_VARIANCE)
+    protected = Stats.starting(NO_VARIANCE)
+    took_bare = monster_hits_agent(_monster("T"), exposed, naked, random.Random(1), NO_VARIANCE)
+    took_armoured = monster_hits_agent(_monster("T"), protected, armed, random.Random(1), NO_VARIANCE)
+    assert took_armoured < took_bare, "worn armour must blunt the blow"

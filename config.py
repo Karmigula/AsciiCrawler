@@ -75,6 +75,11 @@ class Config:
     w_explore: float = 1.0
     explore_throttle_ticks: int = 5
     frontier_sample_size: int = 50
+    # Hard ceiling on nodes one plan sweep may settle. Without it a single
+    # unreachable candidate defeats the sweep's early stop - it never settles,
+    # so the search runs to exhaustion over everything the agent remembers.
+    # Anything beyond the cap scores about zero anyway: value is gain/(1+cost).
+    path_expansion_cap: int = 3000
     explore_hysteresis_bonus: float = 0.1
     explore_noise: float = 0.02
 

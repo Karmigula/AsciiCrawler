@@ -117,8 +117,19 @@ class ChunkContents:
         return self._entity_index.get((x, y))
 
     def item_at(self, x: int, y: int) -> Item | None:
+        """The item on a tile - the top of the pile when several share it.
+
+        A grave loses to anything lying on top of it. The agent's own gear
+        falls onto its headstone, and whether it can pick that gear back up
+        must not depend on which entry a dict happens to yield.
+        """
         if self._item_index is None:
-            self._item_index = {(i.x, i.y): i for i in self.items}
+            index: dict = {}
+            for item in self.items:
+                current = index.get((item.x, item.y))
+                if current is None or current.kind.key == "grave":
+                    index[(item.x, item.y)] = item
+            self._item_index = index
         return self._item_index.get((x, y))
 
     def trap_at(self, x: int, y: int) -> "Trap | None":

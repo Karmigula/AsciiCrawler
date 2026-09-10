@@ -91,6 +91,7 @@ def distances(
     memory: Memory,
     start: Position,
     targets: Iterable[Position] | None = None,
+    max_expansions: int | None = None,
 ) -> tuple[Mapping[Position, float], dict[Position, Position]]:
     """Dijkstra from start over believed floors: (cost-so-far, came-from).
 
@@ -109,6 +110,14 @@ def distances(
 
     `None` means sweep everything. A collection means stop once satisfied,
     and the empty collection is satisfied immediately.
+
+    `max_expansions` bounds the work regardless. It is what makes the target
+    early-stop dependable: an unreachable target never settles, so without a
+    ceiling one such candidate turns every sweep back into a full one over all
+    of memory - which is exactly what happened once the agent had remembered
+    enough loot it could not reach. Coordinates beyond the cap are reported as
+    unreachable, which costs nothing real: score is gain/(1 + cost), so a tile
+    thousands of steps away was never going to win.
     """
     if not memory.believes_passable(start):
         return {}, {}
@@ -120,6 +129,8 @@ def distances(
     counter = 0
     while open_heap:
         if remaining is not None and not remaining:
+            break
+        if max_expansions is not None and len(closed) >= max_expansions:
             break
         g, _, pos = heapq.heappop(open_heap)
         if pos in closed:

@@ -46,9 +46,11 @@ class FakeAgent:
     """Just the surface sim.ai touches: where it stands and what it can lose."""
 
     def __init__(self, pos, config=DEFAULT_CONFIG) -> None:
+        from agent.loadout import derive
+
         self.x, self.y = pos
         self.stats = Stats.starting(config)
-        self.derived = None
+        self.derived = derive(self.stats, {}, config)
 
 
 def _turn(world, agent_pos, tick=1, seed=1, config=DEFAULT_CONFIG, agent=None):

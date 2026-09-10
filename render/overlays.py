@@ -146,9 +146,7 @@ def _tint_frontier(grid: Grid, origin, agent, config) -> Grid:
 
 
 def _driver(agent):
-    """Whichever goal currently holds the wheel."""
-    if agent.fleer.active:
-        return agent.fleer
-    if agent.looter.path:
-        return agent.looter
-    return agent.explorer
+    """Whichever goal currently holds the wheel, per the sim's own rule."""
+    from sim.tick import current_driver
+
+    return current_driver(agent)

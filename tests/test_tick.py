@@ -160,10 +160,14 @@ class PopulatedWorld(FiniteWorld):
         return None
 
     def item_at(self, x, y):
+        # Mirrors ChunkStore: a grave loses to anything lying on top of it.
+        found = None
         for item in self.items:
-            if (item.x, item.y) == (x, y):
-                return item
-        return None
+            if (item.x, item.y) != (x, y):
+                continue
+            if found is None or found.kind.key == "grave":
+                found = item
+        return found
 
     def remove_entity(self, monster):
         self.monsters.remove(monster)
@@ -172,11 +176,10 @@ class PopulatedWorld(FiniteWorld):
         self.dropped.append((kind.key, x, y))
 
     def take_item(self, x, y):
-        for item in self.items:
-            if (item.x, item.y) == (x, y):
-                self.items.remove(item)
-                return item
-        return None
+        item = self.item_at(x, y)
+        if item is not None:
+            self.items.remove(item)
+        return item
 
     @property
     def spawn(self):
@@ -431,6 +434,13 @@ def test_the_agent_goes_back_to_exploring_once_it_is_calm():
         if not agent.fleer.active:
             break
     assert not agent.fleer.active
+
+
+def _bundle(stats, config=DEFAULT_CONFIG):
+    """Derived stats for an agent wearing nothing - what a tick would build."""
+    from agent.loadout import derive
+
+    return derive(stats, {}, config)
 
 
 def _loot(base, x, y, *affix_keys):
@@ -712,6 +722,7 @@ def test_a_bump_does_not_advance_the_plan():
     world = PopulatedWorld(_open_field(), [goblin])
     agent = AgentState(x=20, y=20)
     agent.stats = Stats.starting(config)
+    agent.derived = _bundle(agent.stats, config)
     agent.explorer.path = [(21, 20), (22, 20)]
     before = goblin.hp
 
@@ -728,6 +739,7 @@ def test_a_real_step_does_advance_the_plan():
     world = PopulatedWorld(_open_field())
     agent = AgentState(x=20, y=20)
     agent.stats = Stats.starting(DEFAULT_CONFIG)
+    agent.derived = _bundle(agent.stats)
     agent.explorer.path = [(21, 20), (22, 20)]
 
     _act(agent, world, random.Random(1), DEFAULT_CONFIG)
@@ -743,6 +755,7 @@ def test_a_blocked_step_drops_the_plan():
     field[20][21] = Tile.WALL
     agent = AgentState(x=20, y=20)
     agent.stats = Stats.starting(DEFAULT_CONFIG)
+    agent.derived = _bundle(agent.stats)
     agent.explorer.path = [(21, 20), (22, 20)]
 
     _act(agent, PopulatedWorld(field), random.Random(1), DEFAULT_CONFIG)
@@ -761,6 +774,7 @@ def test_physics_refuses_to_cut_a_corner_the_planner_would_not():
     field[19][20] = Tile.WALL
     agent = AgentState(x=20, y=20)
     agent.stats = Stats.starting(DEFAULT_CONFIG)
+    agent.derived = _bundle(agent.stats)
     agent.explorer.path = [(21, 19)]  # diagonal squeezed between two walls
 
     _act(agent, PopulatedWorld(field), random.Random(1), DEFAULT_CONFIG)
@@ -841,3 +855,87 @@ def test_swapping_to_different_gear_refreshes_the_derived_bundle():
     agent.equipped["weapon"] = _loot("weapon", 0, 0, "cruel")
     tick(agent, world, random.Random(1), DEFAULT_CONFIG)
     assert agent.derived.attack > plain
+
+
+def test_a_grave_site_is_forgotten_when_only_the_headstone_is_left():
+    """The headstone stays forever, so 'nothing left' has to mean 'nothing but
+    the grave' - otherwise the site is never forgotten and every later drop on
+    that tile reads as robbing it again."""
+    from sim.items import GRAVE
+    from world.populate import Item
+
+    grave = Item(kind=GRAVE, x=21, y=20)
+    gear = _loot("weapon", 21, 20, "cruel")
+    world = PopulatedWorld(_open_field(), items=[grave, gear])
+    agent = AgentState(x=20, y=20)
+    agent.grave_sites.add((21, 20))
+
+    _walk_onto(agent, world, DEFAULT_CONFIG, (21, 20))
+
+    assert agent.graves_robbed == 1
+    assert grave in world.items, "the headstone stays"
+    assert (21, 20) not in agent.grave_sites, "but the site is picked clean"
+
+
+def test_the_chronicle_length_knob_controls_what_is_kept():
+    from dataclasses import replace
+
+    config = replace(DEFAULT_CONFIG, chronicle_length=3)
+    world = PopulatedWorld(_open_field())
+    agent = AgentState(x=20, y=20)
+    tick(agent, world, random.Random(1), config)
+    for i in range(10):
+        agent.log.record(i, f"thing {i}")
+    assert len(agent.log) == 3
+
+
+def test_the_overlay_and_the_tick_agree_on_who_is_driving():
+    """One definition of goal precedence; a drifted copy would make the PLAN
+    overlay answer 'why is it doing that' wrongly."""
+    from render.overlays import _driver
+    from sim.tick import current_driver
+
+    agent = AgentState(x=20, y=20)
+    assert _driver(agent) is current_driver(agent) is agent.explorer
+    agent.looter.path = [(21, 20)]
+    assert _driver(agent) is current_driver(agent) is agent.looter
+    agent.fleer.active = True
+    assert _driver(agent) is current_driver(agent) is agent.fleer
+
+
+def test_an_agent_with_nowhere_to_run_stops_fleeing():
+    """Cornered in a dead end by something it cannot escape, the agent used to
+    stay pinned for the rest of the run: the release threshold is a fraction of
+    the trigger, so danger it cannot get away from never falls far enough to
+    let go. Fleeing with nowhere to run is standing still being afraid."""
+    # A one-tile pocket: the only opening is where the monster is remembered.
+    field = [[Tile.WALL for _ in range(8)] for _ in range(8)]
+    field[4][4] = Tile.FLOOR
+    field[3][4] = Tile.FLOOR
+    world = PopulatedWorld(field)
+    agent = AgentState(x=4, y=4)
+    rng = random.Random(1)
+    tick(agent, world, rng, DEFAULT_CONFIG)
+    # Remember a dragon in the only other tile, and never see it leave.
+    agent.memory.observe(
+        {(4, 3): Tile.FLOOR}, tick=agent.tick_count, entities={(4, 3): "D"}
+    )
+    agent.fleer.active = True
+
+    positions = set()
+    for _ in range(40):
+        tick(agent, world, rng, DEFAULT_CONFIG)
+        positions.add((agent.x, agent.y))
+
+    assert not agent.fleer.active, "it should have given up on running"
+    assert agent.goal_name != "FLEE"
+
+
+def test_fleeing_still_happens_when_there_is_somewhere_to_go():
+    """The escape valve must not stop the agent fleeing when flight works."""
+    world = PopulatedWorld(_open_field(), [_monster(24, 20, "D")])
+    agent = AgentState(x=20, y=20)
+    rng = random.Random(5)
+    tick(agent, world, rng, DEFAULT_CONFIG)
+    assert agent.fleer.active
+    assert agent.fleer.path, "open ground: there is somewhere calmer to go"

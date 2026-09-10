@@ -54,12 +54,20 @@ def danger(memory: Memory, coord: Position, config: Config) -> float:
     return total
 
 
-def flee_threshold(stats, config: Config) -> float:
+def flee_threshold(stats, config: Config, derived=None) -> float:
     """How much danger the agent will stand — less of it when it is hurt.
 
     A creature at a third of its hit points runs from a third of the threat it
     would have shrugged off at full health.
+
+    The fraction is measured against the *effective* maximum, because hit
+    points legitimately exceed the bare-body maximum once +max_hp gear is worn.
+    Dividing by the body maximum would report a fully-healed armoured agent as
+    being over full health and make it correspondingly fearless.
     """
-    if stats is None or stats.max_hp <= 0:
+    if stats is None:
         return config.flee_threat
-    return config.flee_threat * (stats.hp / stats.max_hp)
+    ceiling = stats.max_hp if derived is None else max(stats.max_hp, derived.max_hp)
+    if ceiling <= 0:
+        return config.flee_threat
+    return config.flee_threat * (stats.hp / ceiling)

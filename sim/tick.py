@@ -94,6 +94,7 @@ def tick(agent: AgentState, world, rng: random.Random, config: Config) -> None:
     agent.tick_count += 1
     if agent.stats is None:
         agent.stats = Stats.starting(config)
+        agent.log = Chronicle(limit=config.chronicle_length)
     mind = _refresh_loadout(agent, config)
     world.ensure_loaded((agent.x, agent.y))
     _act(agent, world, rng, config)
@@ -164,8 +165,12 @@ def _pick_up(agent: AgentState, world, config: Config) -> None:
     if here in agent.grave_sites and item.kind.slot is not None:
         agent.graves_robbed += 1
         agent.log.record(agent.tick_count, story.robbed_grave())
-        if peek(agent.x, agent.y) is None:
-            agent.grave_sites.discard(here)  # picked clean
+        left = peek(agent.x, agent.y)
+        # The headstone stays put forever, so "nothing left" has to mean
+        # "nothing but the grave" - otherwise the site is never forgotten and
+        # every later drop on that tile reads as robbing it again.
+        if left is None or left.kind.key == "grave":
+            agent.grave_sites.discard(here)
     else:
         agent.log.record(agent.tick_count, story.found(item))
     if item.kind.key == "gold":
@@ -206,13 +211,23 @@ def _quaff(agent: AgentState, config: Config) -> None:
     agent.stats.hp = min(agent.derived.max_hp, agent.stats.hp + config.potion_heal)
 
 
-def _act(agent: AgentState, world, rng: random.Random, config: Config) -> None:
+def current_driver(agent: AgentState):
+    """Whichever goal currently holds the wheel: fear, then greed, then curiosity.
+
+    Public because the PLAN overlay has to draw the same goal the agent is
+    actually walking. Two copies of this precedence would drift, and the
+    overlay exists to answer "why is it doing that" - a drifted copy answers
+    it wrongly.
+    """
     if agent.fleer.active:
-        driver = agent.fleer
-    elif agent.looter.path:
-        driver = agent.looter
-    else:
-        driver = agent.explorer
+        return agent.fleer
+    if agent.looter.path:
+        return agent.looter
+    return agent.explorer
+
+
+def _act(agent: AgentState, world, rng: random.Random, config: Config) -> None:
+    driver = current_driver(agent)
     if driver.path:
         outcome = _try_step(agent, driver.path[0], world, rng, config)
         if outcome == MOVED:
@@ -274,7 +289,7 @@ def _try_step(
     entity_at = getattr(world, "entity_at", None)
     monster = None if entity_at is None else entity_at(nxt[0], nxt[1])
     if monster is not None:
-        agent_hits_monster(agent.stats, monster, rng, config)
+        agent_hits_monster(agent.derived, monster, rng, config)
         if monster.hp <= 0:
             _kill(agent, monster, world, rng, config)
         return ATTACKED
@@ -323,6 +338,13 @@ def _kill(agent: AgentState, monster, world, rng: random.Random, config: Config)
     world.remove_entity(monster)
     agent.kills += 1
     agent.log.record(agent.tick_count, story.killed(monster))
+    if not agent.stats.alive:
+        # The corpse still counts, but a dead agent does not collect on it.
+        # Reflected damage can kill a monster with the same blow that killed
+        # the agent, and healing or levelling here would lift hp back above
+        # zero before _resolve_death looks - quietly cancelling the death and
+        # letting a thorns-and-vampiric build live through anything.
+        return
     before = agent.stats.level
     ceiling = agent.derived.max_hp if agent.derived is not None else None
     agent.stats.gain_xp(xp_for(monster, config), config, ceiling=ceiling)
@@ -404,7 +426,9 @@ def _observe(agent: AgentState, world, config: Config) -> None:
         (origin_x + lx, origin_y + ly) for lx, ly in seen
     }
     entities, items = _things_seen(world, in_sight)
-    agent.memory.observe(observation, agent.tick_count, entities, items)
+    agent.memory.observe(
+        observation, agent.tick_count, entities, items, snapshot_coords=in_sight
+    )
 
 
 def _lava_glow(window, radius: int, config: Config) -> set:
@@ -503,12 +527,19 @@ def _think(agent: AgentState, rng: random.Random, config: Config) -> None:
     to a troll, and "why is it doing that" should be answerable by looking.
     """
     here = (agent.x, agent.y)
-    if agent.fleer.wants_control(here, agent.memory, agent.stats, config):
+    if agent.fleer.wants_control(here, agent.memory, agent.stats, config, agent.derived):
         agent.explorer.drop_plan()
         agent.looter.clear()
-        agent.fleer.decide(here, agent.memory, config)
-        agent.goal_name = "FLEE"
-        return
+        if agent.fleer.decide(here, agent.memory, config):
+            agent.goal_name = "FLEE"
+            return
+        # Nowhere calmer within reach: fleeing with nowhere to run is not
+        # fleeing, it is standing still being afraid. Cornered in a dead end by
+        # something it cannot get away from, the agent would otherwise stay
+        # pinned for the rest of the run - the release threshold is a fraction
+        # of the trigger, so danger it cannot escape never falls far enough to
+        # let go. Hand the wheel back and get on with something.
+        agent.fleer.stand_down()
     if agent.fleer.active:
         agent.fleer.stand_down()
     if agent.looter.path:

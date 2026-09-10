@@ -121,7 +121,9 @@ class ExploreGoal:
 
     def _best_of(self, candidates, start, memory, rng, config):
         """Score a candidate list; return (best, came_from) or (None, {})."""
-        cost, came_from = distances(memory, start, targets=candidates)
+        cost, came_from = distances(
+            memory, start, targets=candidates, max_expansions=config.path_expansion_cap
+        )
         best: Position | None = None
         best_score = float("-inf")
         for cand in candidates:
@@ -168,7 +170,9 @@ class FleeGoal:
     path: list[Position] = field(default_factory=list)
     flights: int = 0
 
-    def wants_control(self, start: Position, memory: Memory, stats, config: Config) -> bool:
+    def wants_control(
+        self, start: Position, memory: Memory, stats, config: Config, derived=None
+    ) -> bool:
         """True while the believed danger here is more than the agent will take.
 
         Hysteresis on release: once running, it keeps running until danger
@@ -176,7 +180,7 @@ class FleeGoal:
         of flight on the boundary.
         """
         here = danger(memory, start, config)
-        threshold = flee_threshold(stats, config)
+        threshold = flee_threshold(stats, config, derived)
         if self.active:
             return here > threshold * config.flee_release
         return here > threshold
@@ -187,6 +191,10 @@ class FleeGoal:
         A local breadth-first sweep, not a path to safety in general: fleeing
         is a decision that has to be remade constantly as the picture changes,
         so paying for a long plan would be waste.
+
+        Returns the route, which is empty when nowhere within reach is calmer
+        than where the agent already stands. The caller uses that to tell
+        running away from being cornered.
         """
         if not self.active:
             self.flights += 1  # count flights, not ticks spent running
@@ -282,7 +290,10 @@ class LootGoal:
         candidates.sort(key=lambda c: (max(abs(c[0][0] - sx), abs(c[0][1] - sy)), c[0]))
         del candidates[config.frontier_sample_size:]
         cost, came_from = distances(
-            memory, start, targets=[coord for coord, _ in candidates]
+            memory,
+            start,
+            targets=[coord for coord, _ in candidates],
+            max_expansions=config.path_expansion_cap,
         )
         best, best_score = None, 0.0
         for coord, value in candidates:

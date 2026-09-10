@@ -58,6 +58,7 @@ class Memory:
         tick: int,
         entities: Mapping[Position, str] | None = None,
         items: Mapping[Position, str] | None = None,
+        snapshot_coords: set | None = None,
     ) -> int:
         """Merge one FOV observation (visible coord -> terrain) into memory.
 
@@ -80,11 +81,20 @@ class Memory:
                     last_item=items.get(coord),
                 )
                 fresh += 1
-            else:
+            elif snapshot_coords is None or coord in snapshot_coords:
                 record.last_seen_tick = tick
                 record.terrain_belief = terrain
                 record.last_entity_snapshot = entities.get(coord)
                 record.last_item = items.get(coord)
+            else:
+                # Lit, not seen. Update the terrain belief, but do NOT touch
+                # the clock: light is not a sighting. Refreshing it here keeps
+                # the record alive forever, and with it whatever monster the
+                # agent last saw on that tile - an immortal phantom that keeps
+                # the threat field hot and can pin the agent in flight for the
+                # rest of the run.
+                record.terrain_belief = terrain
+                continue
             self._index(coord, entities.get(coord), items.get(coord))
         if fresh:
             self.generation += 1

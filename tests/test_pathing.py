@@ -177,3 +177,32 @@ def test_the_two_target_modes_are_distinct():
     empty_cost, _ = distances(memory, (2, 2), targets=[])
     assert len(full_cost) > 100
     assert list(empty_cost) == [(2, 2)]  # start only: nothing to wait for
+
+
+def test_the_expansion_cap_bounds_a_sweep_that_cannot_finish():
+    """An unreachable target never settles, so without a ceiling one candidate
+    turns every sweep into a full one over all of memory."""
+    memory = _blob_memory(60, 60)
+    walled_off = (100, 100)  # outside the blob entirely
+    uncapped, _ = distances(memory, (2, 2), targets=[walled_off])
+    capped, _ = distances(memory, (2, 2), targets=[walled_off], max_expansions=200)
+    assert len(uncapped) > 2000, "setup: the uncapped sweep should exhaust the blob"
+    assert len(capped) <= 250
+    assert capped.get(walled_off) is None
+
+
+def test_the_cap_does_not_disturb_a_target_it_reaches_first():
+    memory = _blob_memory(60, 60)
+    near = (5, 5)
+    full, _ = distances(memory, (2, 2), targets=[near])
+    capped, _ = distances(memory, (2, 2), targets=[near], max_expansions=3000)
+    assert capped[near] == full[near]
+
+
+def test_a_target_past_the_cap_reads_as_unreachable():
+    memory = _blob_memory(60, 60)
+    far = (58, 58)
+    reachable, _ = distances(memory, (2, 2), targets=[far])
+    assert reachable.get(far) is not None
+    capped, _ = distances(memory, (2, 2), targets=[far], max_expansions=50)
+    assert capped.get(far) is None

@@ -35,7 +35,7 @@ def take_turns(
     rng: random.Random,
     config: Config,
     tick: int,
-) -> int:
+) -> tuple[int, list]:
     """Move or attack with every active monster that is due to act, in place.
 
     Returns (damage dealt to the agent, monsters killed by reflected damage).
@@ -56,7 +56,9 @@ def take_turns(
         if target is None:
             continue
         if target == agent_pos and agent.stats.alive:
-            landed = monster_hits_agent(monster, agent.stats, rng, config)
+            landed = monster_hits_agent(
+                monster, agent.stats, agent.derived, rng, config
+            )
             damage += landed
             derived = getattr(agent, "derived", None)
             if derived is not None:
