@@ -1,0 +1,26 @@
+# AsciiCrawler dependencies.
+#
+#   python -m venv .venv
+#   .venv\Scripts\pip install -r requirements.txt
+#
+# Python 3.10 or newer: the code uses `X | Y` type syntax throughout.
+# Developed on 3.14.
+
+# The window, the font and the input handling - the only place pygame is
+# allowed to appear is render/screen.py and main.py.
+#
+# pygame-ce, NOT pygame. They are rival forks that both install a module
+# called `pygame`, so having both in one environment gives you whichever
+# happens to win. This is the fork that is maintained, and it is what the
+# game is built and tested against; `pip install pygame` alongside it is the
+# one mistake this file exists to prevent.
+pygame-ce>=2.5,<3
+
+# Tile arrays. Chunks are (64, 64) int8 grids and the generators do their
+# flood fills and erosion passes on them wholesale.
+numpy>=1.24,<3
+
+# --- development only; the game runs without these ---
+
+# 496 tests, plus the multi-world soaks behind `-m slow`.
+pytest>=8,<10

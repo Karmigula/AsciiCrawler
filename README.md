@@ -19,6 +19,17 @@ Double-click `run.bat`, or:
 .venv\Scripts\python.exe main.py
 ```
 
+First time, from a fresh clone:
+
+```
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+```
+
+Python 3.10 or newer. Two dependencies: **pygame-ce** and numpy — note the
+`-ce`, since plain `pygame` is a rival fork that installs a module by the
+same name and the two do not belong in one environment.
+
 See [CHANGELOG.md](CHANGELOG.md) for what is in this release.
 
 ## Controls
