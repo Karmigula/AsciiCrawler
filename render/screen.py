@@ -12,6 +12,7 @@ from pathlib import Path
 import pygame
 
 from config import Config
+from render.displays import monitor_rects
 
 Color = tuple[int, int, int]
 Position = tuple[int, int]
@@ -109,6 +110,12 @@ class Screen:
         nothing during play. Returns None if the probe cannot run, and the
         caller falls back to the left-to-right guess.
         """
+        # Ask the OS first. It knows, and every alternative is inference.
+        # Monitors left of the primary sit at negative x, which no arrangement
+        # of sizes alone can tell you about.
+        reported = monitor_rects()
+        if reported:
+            return reported
         sizes = self._desktop_sizes()
         if len(sizes) <= 1:
             return [(0, 0, sizes[0][0], sizes[0][1])]
@@ -134,9 +141,9 @@ class Screen:
     def _display_rects(self) -> list[tuple[int, int, int, int]]:
         """(x, y, w, h) for each display, in index order.
 
-        Measured at startup where that is possible. The fallback lays the
-        displays out left to right, which is right for monitors side by side
-        sharing a top edge and wrong for anything else.
+        Three sources, best first: what the operating system says, what a
+        startup probe measured, and finally a left-to-right guess that is only
+        correct for the simplest desk.
         """
         if self._display_bounds:
             return self._display_bounds
@@ -178,6 +185,9 @@ class Screen:
         x, y, width, height = rects[min(display, len(rects) - 1)]
         self._mode = mode
         if mode == FULLSCREEN:
+            # Sized and placed from the rectangle, not from a display index:
+            # the index is only used to pick which rectangle, and SDL's
+            # ordering need not agree with the operating system's.
             self._configure((width, height), pygame.NOFRAME, display=display)
             self._place((x, y))
         elif mode == BORDERLESS:
