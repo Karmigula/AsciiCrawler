@@ -129,3 +129,60 @@ def test_the_soak_screen_flags_a_world_that_went_wrong():
     assert bad == DEFAULT_CONFIG.hud_bad_color, "a starving world is flagged"
     assert stalled == DEFAULT_CONFIG.hud_bad_color, "so is one that stopped moving"
     assert good != DEFAULT_CONFIG.hud_bad_color
+
+
+def test_a_hall_can_be_written_somewhere_that_does_not_exist_yet(tmp_path):
+    """A mounted volume starts empty, and this failure is a silent one.
+
+    `save` swallows OSError on purpose - losing a scoreboard is not worth a
+    crash - so writing into a missing folder recorded nothing, reported
+    nothing, and left a hall that stayed empty for good.
+    """
+    from sim import hall
+    from sim.hall import Fallen
+
+    where = tmp_path / "volume" / "nested" / "hall_of_fame.json"
+    entry = Fallen(
+        seed=1, level=4, kills=9, depth=120, ticks=800,
+        killer="a troll", archetype="scout", gold=3, name="Someone Ashwake",
+    )
+
+    assert hall.save([entry], where) is True, "the write reported failure"
+    assert where.exists(), "the folder was not made"
+    assert hall.load(where)[0].name == "Someone Ashwake"
+
+
+def test_the_hosted_game_records_the_dead_unless_told_not_to(tmp_path):
+    """It shipped switched off, so the hall stayed empty however much died.
+
+    That was the right default for a host that wipes its disk on every
+    deploy and the wrong one everywhere else: a scoreboard nobody turned on
+    is a scoreboard nobody sees.
+    """
+    import importlib
+    import os
+
+    import pytest
+
+    pytest.importorskip("fastapi")
+
+    was = os.environ.get("CRAWLER_HALL_PATH")
+    os.environ["CRAWLER_HALL_PATH"] = str(tmp_path / "hall.json")
+    try:
+        import web.app
+
+        importlib.reload(web.app)
+        assert web.app.KEEP_HALL is True, "the dead are not being recorded"
+
+        os.environ["CRAWLER_HALL"] = "0"
+        importlib.reload(web.app)
+        assert web.app.KEEP_HALL is False, "it cannot be switched off"
+    finally:
+        os.environ.pop("CRAWLER_HALL", None)
+        if was is None:
+            os.environ.pop("CRAWLER_HALL_PATH", None)
+        else:
+            os.environ["CRAWLER_HALL_PATH"] = was
+        import web.app
+
+        importlib.reload(web.app)

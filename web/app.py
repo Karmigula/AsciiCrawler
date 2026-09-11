@@ -96,11 +96,17 @@ TICKS_PER_FRAME = _env_int("CRAWLER_TICKS_PER_FRAME", 1)
 # Rotating also keeps the tank worth watching.
 WORLD_TICKS = _env_int("CRAWLER_WORLD_TICKS", 40_000)
 HUD_CHARS = _env_int("CRAWLER_HUD_CHARS", 46)
-# Where to keep the hall of fame. Off unless asked for, because a host that
-# rebuilds its filesystem on every deploy turns a scoreboard into a file that
-# quietly lies about being permanent. Given a path on a real disk, it is worth
-# having: these are the only lives that outlast their world.
-HALL_PATH = os.environ.get("CRAWLER_HALL_PATH")
+# Where to keep the hall of fame, and whether to keep one at all. On by
+# default: the dead are the only thing here that outlives its world, and a
+# scoreboard nobody switched on is a scoreboard nobody sees.
+#
+# How long it lasts is the host's business rather than ours. Point
+# CRAWLER_HALL_PATH at a mounted volume and the dead outlive deploys too;
+# leave it and they last as long as the container's own filesystem does.
+HALL_PATH = Path(
+    os.environ.get("CRAWLER_HALL_PATH", Path(__file__).parent.parent / "data" / "hall_of_fame.json")
+)
+KEEP_HALL = os.environ.get("CRAWLER_HALL", "1") != "0"
 # The desktop defaults to staying in the same dungeon after a death, so the
 # next life can walk back for its own gear. Watching a stream, a death is the
 # end of a story and the interesting thing is a new one somewhere else - so
@@ -261,8 +267,8 @@ async def lifespan(app: FastAPI):
         replace(DEFAULT_CONFIG, new_world_on_death=NEW_WORLD_ON_DEATH),
         seed=seed,
         max_ticks=WORLD_TICKS,
-        record_hall=bool(HALL_PATH) or os.environ.get("CRAWLER_HALL", "0") == "1",
-        hall_path=Path(HALL_PATH) if HALL_PATH else None,
+        record_hall=KEEP_HALL,
+        hall_path=HALL_PATH,
     )
     app.state.viewers = Viewers()
     app.state.failures = 0  # lifetime, reported by /healthz
@@ -329,10 +335,10 @@ async def hall_of_fame() -> JSONResponse:
     changes when something dies, which is rarely, and a frame goes out a
     dozen times a second to everyone at once.
     """
-    entries = hall.load(Path(HALL_PATH) if HALL_PATH else None)
+    entries = hall.load(HALL_PATH)
     return JSONResponse(
         {
-            "kept": bool(HALL_PATH) or os.environ.get("CRAWLER_HALL") == "1",
+            "kept": KEEP_HALL,
             "lives": [
                 {
                     "name": entry.name or "someone",

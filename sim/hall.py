@@ -72,9 +72,16 @@ def load(path: Path | None = None) -> list[Fallen]:
 
 
 def save(entries: list[Fallen], path: Path | None = None) -> bool:
-    """Write the hall out. Failing to record a death is not worth a crash."""
+    """Write the hall out. Failing to record a death is not worth a crash.
+
+    Makes the folder if it is not there. A mounted volume starts empty, so
+    without this the first death on a fresh host wrote nothing, reported
+    nothing, and left a hall that stayed empty forever - the failure is
+    swallowed here on purpose, which is exactly what would have hidden it.
+    """
     target = DEFAULT_PATH if path is None else path
     try:
+        Path(target).parent.mkdir(parents=True, exist_ok=True)
         with open(target, "w", encoding="utf-8") as handle:
             json.dump([asdict(entry) for entry in entries], handle, indent=2)
         return True

@@ -167,11 +167,13 @@ function showHall(payload) {
   });
 
   if (!rows.length) {
-    hallNote.textContent = "nothing has died down there yet.";
+    hallNote.textContent = payload.kept
+      ? "nothing has died down there yet."
+      : "this instance is not recording the dead.";
   } else if (!payload.kept) {
     // Worth saying plainly rather than letting someone come back tomorrow to
     // an empty table and wonder what happened to it.
-    hallNote.textContent = "these lives are remembered until the server restarts.";
+    hallNote.textContent = "this instance is not recording the dead.";
   } else {
     hallNote.textContent = "the best runs this dungeon remembers.";
   }

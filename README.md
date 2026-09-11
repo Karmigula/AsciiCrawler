@@ -82,8 +82,8 @@ nothing.
 | `CRAWLER_SEED` | which world to start on | a fresh one each boot, logged |
 | `CRAWLER_HUD_CHARS` | width the side panel is clipped to | 46 |
 | `CRAWLER_NEW_WORLD_ON_DEATH` | `0` to stay in the same dungeon after a death | on |
-| `CRAWLER_HALL_PATH` | where to keep the hall of fame | not kept |
-| `CRAWLER_HALL` | `1` to write the hall of fame beside the game | off |
+| `CRAWLER_HALL_PATH` | where to keep the hall of fame | `data/hall_of_fame.json` |
+| `CRAWLER_HALL` | `0` to stop recording the dead | on |
 
 The page scales the grid to whatever room the browser gives it, so the same
 frame fits a phone and a 1440p window. Everyone shares one frame, so the
@@ -115,11 +115,12 @@ is a Render blueprint; `Procfile` covers hosts that want one. One simulation
 per process, so do not run multiple workers — each would be a different
 world, and viewers would land on whichever one answered.
 
-**Keeping the hall of fame.** It is off by default, because a host that
-rebuilds its filesystem on every deploy turns a scoreboard into a file that
-quietly lies about being permanent. Given somewhere that lasts — a mounted
-volume — set `CRAWLER_HALL_PATH` to a file on it and the dead stay
-remembered. They are the only thing here that outlives its world.
+**Keeping the hall of fame.** The dead are recorded by default, and the
+folder is made if it is not there. How long they last is the host's business:
+left alone they live in `data/` and survive as long as the container's own
+filesystem does, which on most platforms means until the next deploy. Point
+`CRAWLER_HALL_PATH` at a file on a mounted volume and they outlive deploys
+too — they are the only thing here that outlives its world.
 
 See [CHANGELOG.md](CHANGELOG.md) for what is in this release.
 
