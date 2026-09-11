@@ -42,6 +42,7 @@ class Session:
         seed: int | None = None,
         max_ticks: int = 0,
         record_hall: bool = True,
+        hall_path=None,
     ) -> None:
         self.config = config
         self.seed = config.world_seed if seed is None else seed
@@ -54,6 +55,10 @@ class Session:
         self._seen: set[int] = {self.seed}
         self.max_ticks = max_ticks
         self.record_hall = record_hall
+        # Where the hall is written. A host that keeps a disk can point this
+        # at it; the default sits beside the game, which is right for a
+        # desktop and wrong for a container that is rebuilt on every deploy.
+        self.hall_path = hall_path
         self.worlds = 0
         self._deaths_seen = 0
         self._start()
@@ -91,7 +96,7 @@ class Session:
                 # job, which keeps sim/tick.py free of file handling.
                 fallen = self.agent.fallen.pop(0)
                 if self.record_hall:
-                    hall.remember(fallen)
+                    hall.remember(fallen, self.hall_path)
             if should_restart(self.config, self.agent.deaths, self._deaths_seen):
                 self._next_world()
                 continue

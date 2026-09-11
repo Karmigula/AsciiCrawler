@@ -23,6 +23,9 @@ const hudBox = canvas && document.getElementById("hud");
 const wornBox = canvas && document.getElementById("worn");
 const logBox = canvas && document.getElementById("log");
 const viewerBox = canvas && document.getElementById("viewers");
+const hallBox = canvas && document.getElementById("hall");
+const hallTable = canvas && document.getElementById("hall-table");
+const hallNote = canvas && document.getElementById("hall-note");
 
 let latest = null;
 let socket = null;
@@ -119,6 +122,76 @@ function tinted(text, color) {
   return line;
 }
 
+// --- the hall of fame, on demand ---
+
+const HALL_COLUMNS = [
+  ["", "place"],
+  ["name", "name"],
+  ["level", "level"],
+  ["kills", "kills"],
+  ["depth", "depth"],
+  ["lived", "ticks"],
+  ["build", "build"],
+  ["killed by", "killer"],
+  ["score", "score"],
+];
+
+function cell(tag, text, left) {
+  const node = document.createElement(tag);
+  node.textContent = text;
+  if (left) node.className = "left";
+  return node;
+}
+
+function showHall(payload) {
+  const rows = payload.lives || [];
+  hallTable.replaceChildren();
+  const head = document.createElement("tr");
+  for (const [label, key] of HALL_COLUMNS) {
+    head.append(cell("th", label, key === "name" || key === "build" || key === "killer"));
+  }
+  hallTable.append(head);
+
+  rows.forEach((life, index) => {
+    const row = document.createElement("tr");
+    row.append(cell("td", `${index + 1}.`));
+    row.append(cell("td", life.name, true));
+    row.append(cell("td", life.level));
+    row.append(cell("td", life.kills));
+    row.append(cell("td", life.depth));
+    row.append(cell("td", life.ticks.toLocaleString()));
+    row.append(cell("td", life.build, true));
+    row.append(cell("td", life.killer, true));
+    row.append(cell("td", life.score.toLocaleString()));
+    hallTable.append(row);
+  });
+
+  if (!rows.length) {
+    hallNote.textContent = "nothing has died down there yet.";
+  } else if (!payload.kept) {
+    // Worth saying plainly rather than letting someone come back tomorrow to
+    // an empty table and wonder what happened to it.
+    hallNote.textContent = "these lives are remembered until the server restarts.";
+  } else {
+    hallNote.textContent = "the best runs this dungeon remembers.";
+  }
+}
+
+async function openHall() {
+  hallBox.hidden = false;
+  hallNote.textContent = "looking…";
+  try {
+    const answer = await fetch("/api/hall");
+    showHall(await answer.json());
+  } catch (whatever) {
+    hallNote.textContent = "could not reach the hall just now.";
+  }
+}
+
+function closeHall() {
+  hallBox.hidden = true;
+}
+
 function connect() {
   const scheme = location.protocol === "https:" ? "wss" : "ws";
   socket = new WebSocket(`${scheme}://${location.host}/ws`);
@@ -153,6 +226,21 @@ function connect() {
 }
 
 if (canvas) {
+  document.getElementById("open-hall").addEventListener("click", openHall);
+  hallBox.addEventListener("click", (event) => {
+    if (event.target === hallBox) closeHall();  // clicking the dark closes it
+  });
+  window.addEventListener("keydown", (event) => {
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    const key = event.key.toLowerCase();
+    if (key === "h") {
+      event.preventDefault();
+      hallBox.hidden ? openHall() : closeHall();
+    } else if (key === "escape") {
+      closeHall();
+    }
+  });
+
   let pending = null;
   window.addEventListener("resize", () => {
     // Resize fires in bursts while a window is dragged; one redraw at the end

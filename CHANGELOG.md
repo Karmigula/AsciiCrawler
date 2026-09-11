@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### Visitors can see the hall of fame
+
+Press <kbd>h</kbd> on the site, or click **hall of fame**. The dead are
+fetched when the overlay opens rather than carried on every frame: a life
+ends rarely and a frame goes out a dozen times a second to everybody.
+
+It says plainly whether those lives are kept, because coming back tomorrow to
+an empty table is worse than knowing. Given `CRAWLER_HALL_PATH` on a disk
+that survives a deploy, they are.
+
+The viewer count and the source link moved to the corner of the window. The
+panel is about the creature; neither of those is.
+
+### Sized for a box with a core to spend
+
+The window is 120×44 at twelve frames a second, up from 104×36 at eight. The
+old numbers were shaped by a free tier metered at a tenth of a core; a frame
+that size costs about 25ms to build, so this is roughly a third of one.
+
 ### An amulet on the ice could end a run
 
 Picking things up read only the tile the agent finished its move on, and a

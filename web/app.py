@@ -26,6 +26,7 @@ from dataclasses import replace
 
 from config import DEFAULT_CONFIG
 from render.hud import chronicle_lines, equipment_lines, hud_lines
+from sim import hall
 from sim.session import Session
 from web.frame import serialize
 
@@ -75,21 +76,31 @@ def _env_int(name: str, default: int) -> int:
 
 # Everyone shares one frame, so the window cannot be tailored to each browser
 # and its shape is a compromise. A character cell is about 1.6 times taller
-# than it is wide, so 104x36 draws at roughly 16:9 and fills a maximised
+# than it is wide, so 120x44 draws at roughly 16:9 and fills a maximised
 # window instead of leaving bands down both sides.
+#
+# A frame that size measures about 25ms to build, so twelve a second is
+# roughly a third of one core. The earlier 104x36 at eight was sized for a
+# free tier metered at a tenth of a core; this is sized for a box that has
+# one to spend.
 #
 # A frame is a few tens of milliseconds of Python, so a small instance will
 # not always hit the target rate - and that is fine: falling behind makes the
 # tank run slower, not wrong. Every knob is an environment variable, so a host
 # that struggles can be dialled down without a deploy.
-COLS = _env_int("CRAWLER_COLS", 104)
-ROWS = _env_int("CRAWLER_ROWS", 36)
-FPS = _env_int("CRAWLER_FPS", 8)
+COLS = _env_int("CRAWLER_COLS", 120)
+ROWS = _env_int("CRAWLER_ROWS", 44)
+FPS = _env_int("CRAWLER_FPS", 12)
 TICKS_PER_FRAME = _env_int("CRAWLER_TICKS_PER_FRAME", 1)
 # Chunks are never discarded, so a world that runs for a month is a slow leak.
 # Rotating also keeps the tank worth watching.
 WORLD_TICKS = _env_int("CRAWLER_WORLD_TICKS", 40_000)
 HUD_CHARS = _env_int("CRAWLER_HUD_CHARS", 46)
+# Where to keep the hall of fame. Off unless asked for, because a host that
+# rebuilds its filesystem on every deploy turns a scoreboard into a file that
+# quietly lies about being permanent. Given a path on a real disk, it is worth
+# having: these are the only lives that outlast their world.
+HALL_PATH = os.environ.get("CRAWLER_HALL_PATH")
 # The desktop defaults to staying in the same dungeon after a death, so the
 # next life can walk back for its own gear. Watching a stream, a death is the
 # end of a story and the interesting thing is a new one somewhere else - so
@@ -250,9 +261,8 @@ async def lifespan(app: FastAPI):
         replace(DEFAULT_CONFIG, new_world_on_death=NEW_WORLD_ON_DEATH),
         seed=seed,
         max_ticks=WORLD_TICKS,
-        # A free host's disk is wiped on every deploy, so a hall of fame kept
-        # there is a file that quietly lies about being permanent.
-        record_hall=os.environ.get("CRAWLER_HALL", "0") == "1",
+        record_hall=bool(HALL_PATH) or os.environ.get("CRAWLER_HALL", "0") == "1",
+        hall_path=Path(HALL_PATH) if HALL_PATH else None,
     )
     app.state.viewers = Viewers()
     app.state.failures = 0  # lifetime, reported by /healthz
@@ -309,6 +319,35 @@ async def healthz() -> JSONResponse:
 async def frame() -> JSONResponse:
     """The last frame, as JSON. Handy without a socket, and for debugging."""
     return JSONResponse(json.loads(app.state.latest))
+
+
+@app.get("/api/hall")
+async def hall_of_fame() -> JSONResponse:
+    """The best lives this instance remembers, for the overlay to show.
+
+    Fetched when somebody opens it rather than carried on every frame: it
+    changes when something dies, which is rarely, and a frame goes out a
+    dozen times a second to everyone at once.
+    """
+    entries = hall.load(Path(HALL_PATH) if HALL_PATH else None)
+    return JSONResponse(
+        {
+            "kept": bool(HALL_PATH) or os.environ.get("CRAWLER_HALL") == "1",
+            "lives": [
+                {
+                    "name": entry.name or "someone",
+                    "level": entry.level,
+                    "kills": entry.kills,
+                    "depth": entry.depth,
+                    "ticks": entry.ticks,
+                    "killer": entry.killer,
+                    "build": entry.archetype,
+                    "score": hall.score(entry),
+                }
+                for entry in entries
+            ],
+        }
+    )
 
 
 @app.websocket("/ws")

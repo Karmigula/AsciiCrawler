@@ -23,11 +23,24 @@
     <pre id="worn"></pre>
     <pre id="log"></pre>
     <p class="foot">
-      <a href="https://github.com/Karmigula/AsciiCrawler">source</a>
-      <span id="viewers"></span>
+      <button id="open-hall" type="button">hall of fame <kbd>h</kbd></button>
     </p>
   </aside>
 </main>
+
+<p class="corner">
+  <span id="viewers"></span>
+  <a href="https://github.com/Karmigula/AsciiCrawler">source</a>
+</p>
+
+<div id="hall" class="overlay" hidden>
+  <div class="sheet" role="dialog" aria-label="Hall of fame">
+    <h2>hall of fame <span class="hint">esc to close</span></h2>
+    <p id="hall-note"></p>
+    <div class="scroll"><table id="hall-table"></table></div>
+  </div>
+</div>
+
 <script src="/static/app.js"></script>
 </body>
 </html>

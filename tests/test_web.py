@@ -474,3 +474,74 @@ def test_different_starting_worlds_lead_somewhere_different():
         return set(seen)
 
     assert not (walk(11) & walk(12)), "two boots visited the same worlds"
+
+
+def test_the_hall_can_be_kept_somewhere_that_survives_a_deploy(tmp_path):
+    """A host with a real disk should be able to keep the scoreboard.
+
+    It is off by default because a filesystem rebuilt on every deploy makes a
+    hall of fame a file that quietly lies about being permanent - but given a
+    path that lasts, these are the only lives that outlive their world.
+    """
+    from dataclasses import replace
+
+    from config import DEFAULT_CONFIG
+    from sim import hall
+    from sim.session import Session
+
+    where = tmp_path / "hall_of_fame.json"
+    session = Session(
+        replace(DEFAULT_CONFIG, new_world_on_death=False),
+        seed=3,
+        record_hall=True,
+        hall_path=where,
+    )
+    for _ in range(30000):
+        session.advance(1)
+        if session.agent.deaths:
+            break
+
+    assert session.agent.deaths, "nothing died; the test proves nothing"
+    assert where.exists(), "the hall was not written where it was asked for"
+    entries = hall.load(where)
+    assert entries and entries[0].name, "the life that ended was not recorded"
+
+
+def test_the_server_entry_point_starts_the_web_app_not_the_desktop_game():
+    """`main.py` opens a pygame window, and hosts guess that name.
+
+    A platform that picks an entry point by filename would find the desktop
+    game and try to open a window on a machine with no screen, so there is a
+    `server.py` for it to find instead.
+    """
+    import ast
+
+    source = open("server.py", encoding="utf-8").read()
+    tree = ast.parse(source)
+    targets = {
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+
+    assert "web.app:app" in targets, "server.py does not start the web app"
+    assert "PORT" in targets, "server.py ignores the host's port"
+
+
+def test_the_hall_is_served_for_the_overlay_to_show():
+    """Visitors cannot open a settings screen, so the hall comes over HTTP."""
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+
+    from web.app import app
+
+    with TestClient(app) as client:
+        answer = client.get("/api/hall")
+
+    assert answer.status_code == 200
+    body = answer.json()
+    assert "lives" in body and isinstance(body["lives"], list)
+    assert "kept" in body, "the page needs to know whether these lives persist"
+    for life in body["lives"]:
+        assert {"name", "level", "kills", "depth", "score"} <= set(life)

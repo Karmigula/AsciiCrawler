@@ -165,3 +165,32 @@ def test_a_wider_window_gets_bigger_cells_not_a_cropped_map(tmp_path):
 
     assert large["cellW"] > small["cellW"]
     assert large["cellH"] > small["cellH"]
+
+
+def test_the_page_has_every_element_the_script_reaches_for():
+    """A rename here fails silently: the script throws into the console.
+
+    Nothing on the server notices, the frames keep arriving, and the page just
+    stops drawing - so the two files are checked against each other.
+    """
+    import re
+
+    script = open("web/static/app.js", encoding="utf-8").read()
+    page = open("web/static/index.html", encoding="utf-8").read()
+
+    wanted = set(re.findall(r'getElementById\("([^"]+)"\)', script))
+
+    assert wanted, "found no element lookups; the check is not working"
+    missing = sorted(name for name in wanted if f'id="{name}"' not in page)
+    assert not missing, f"app.js looks for elements the page does not have: {missing}"
+
+
+def test_the_hall_overlay_can_be_opened_and_shut():
+    """It is the only way a visitor sees the hall, so the wiring is pinned."""
+    script = open("web/static/app.js", encoding="utf-8").read()
+    page = open("web/static/index.html", encoding="utf-8").read()
+
+    assert "/api/hall" in script, "the overlay never asks the server for one"
+    assert "openHall" in script and "closeHall" in script
+    assert 'key === "escape"' in script, "escape should shut it"
+    assert "<kbd>h</kbd>" in page, "the page should say which key opens it"

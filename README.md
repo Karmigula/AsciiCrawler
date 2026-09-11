@@ -76,13 +76,14 @@ nothing.
 
 | variable | | default |
 | --- | --- | --: |
-| `CRAWLER_COLS` / `CRAWLER_ROWS` | size of the window | 104 × 36 |
-| `CRAWLER_FPS` | frames a second to aim for | 8 |
+| `CRAWLER_COLS` / `CRAWLER_ROWS` | size of the window | 120 × 44 |
+| `CRAWLER_FPS` | frames a second to aim for | 12 |
 | `CRAWLER_WORLD_TICKS` | roll a fresh world after this many ticks | 40,000 |
 | `CRAWLER_SEED` | which world to start on | a fresh one each boot, logged |
 | `CRAWLER_HUD_CHARS` | width the side panel is clipped to | 46 |
 | `CRAWLER_NEW_WORLD_ON_DEATH` | `0` to stay in the same dungeon after a death | on |
-| `CRAWLER_HALL` | `1` to write the hall of fame to disk | off |
+| `CRAWLER_HALL_PATH` | where to keep the hall of fame | not kept |
+| `CRAWLER_HALL` | `1` to write the hall of fame beside the game | off |
 
 The page scales the grid to whatever room the browser gives it, so the same
 frame fits a phone and a 1440p window. Everyone shares one frame, so the
@@ -93,20 +94,32 @@ window rather than leaving bands down both sides.
 A small host will not always hit the frame rate. That is fine — falling
 behind makes the tank run slower, not wrong.
 
+Press <kbd>h</kbd> — or click **hall of fame** — for the best runs the
+instance remembers.
+
 ### Deploying it
 
-`render.yaml` is a Render blueprint: **New → Blueprint**, point it at the
-repo, done. `Procfile` covers hosts that want one instead. The start command
-either way is:
+Any of three shapes, depending on what the host wants:
 
 ```
-uvicorn web.app:app --host 0.0.0.0 --port $PORT
+python server.py                                  # runs a file
+uvicorn web.app:app --host 0.0.0.0 --port $PORT   # runs an ASGI app
 ```
 
-Render's free instance sleeps after a spell without traffic and wakes on the
-next request, which suits something nobody is obliged to watch. For a custom
-domain, point a subdomain at it rather than the apex — `crawl.yourdomain.com`
-keeps the rest of the domain free to move.
+`server.py` exists because platforms that guess an entry point look for
+`main.py` — which here is the pygame desktop game, and would try to open a
+window on a machine with no screen. It honours `PORT` and falls back to 8080.
+
+`zbpack.json` names it for Zeabur and pins the Python version; `render.yaml`
+is a Render blueprint; `Procfile` covers hosts that want one. One simulation
+per process, so do not run multiple workers — each would be a different
+world, and viewers would land on whichever one answered.
+
+**Keeping the hall of fame.** It is off by default, because a host that
+rebuilds its filesystem on every deploy turns a scoreboard into a file that
+quietly lies about being permanent. Given somewhere that lasts — a mounted
+volume — set `CRAWLER_HALL_PATH` to a file on it and the dead stay
+remembered. They are the only thing here that outlives its world.
 
 See [CHANGELOG.md](CHANGELOG.md) for what is in this release.
 
