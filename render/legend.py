@@ -89,6 +89,24 @@ def _boss_rows(config: Config) -> list[Row]:
     ]
 
 
+def _bolt_rows(config: Config) -> list[Row]:
+    """The marks a spell leaves crossing the room.
+
+    They last a few ticks and are gone, which is exactly why they need a line
+    on the sheet: a glyph you see for a quarter of a second and never again is
+    the hardest kind to look up.
+    """
+    from sim.spells import SPELLS
+
+    colour = config.spell_colors.get("ember_bolt", (250, 148, 60))
+    return [
+        ("-", "a spell in flight", colour),
+        ("|", "the same, going the other way", colour),
+        ("/", "and on the diagonal", colour),
+        ("\\", "and the other diagonal", colour),
+    ]
+
+
 def legend_sections(config: Config) -> list[tuple[str, list[Row]]]:
     """The whole sheet: (heading, rows) in reading order."""
     return [
@@ -96,6 +114,7 @@ def legend_sections(config: Config) -> list[tuple[str, list[Row]]]:
         ("ground", _tile_rows(config)),
         ("things", _item_rows(config)),
         ("company", _monster_rows(config)),
+        ("spells", _bolt_rows(config)),
         ("the named", _boss_rows(config)),
     ]
 

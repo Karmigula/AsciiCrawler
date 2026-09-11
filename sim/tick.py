@@ -74,6 +74,10 @@ class AgentState:
     # Spell cooldowns, {key: ticks left}; absent means ready.
     cooldowns: dict = field(default_factory=dict)
     casts: int = 0
+    # Bolts thrown in the last few ticks, so the renderer can draw them:
+    # [(coord, glyph, colour, ticks left)]. Purely something to look at - the
+    # damage was done the moment it was cast.
+    flashes: list = field(default_factory=list)
     # The wandering named thing currently after it, if any.
     roaming_boss: object = None
     derived: object = None
@@ -138,6 +142,8 @@ def tick(agent: AgentState, world, rng: random.Random, config: Config) -> None:
     _send_a_boss(agent, world, rng, config)
     _fade_effects(agent)
     magic.tick(agent.cooldowns)
+    _fade_flashes(agent)
+    _recover_mana(agent, mind, config)
     agent.life_depth = max(
         agent.life_depth, int((agent.x * agent.x + agent.y * agent.y) ** 0.5)
     )
@@ -355,7 +361,7 @@ def _cast(agent: AgentState, world, rng: random.Random, config: Config) -> bool:
     derived = agent.derived
     if derived is None or not derived.spells:
         return False
-    available = magic.ready(derived.spells, agent.cooldowns)
+    available = magic.ready(derived.spells, agent.cooldowns, agent.stats.mp)
     if not available:
         return False
     entity_at = getattr(world, "entity_at", None)
@@ -373,6 +379,9 @@ def _cast(agent: AgentState, world, rng: random.Random, config: Config) -> bool:
         return False
 
     spell, monster = best
+    if not agent.stats.spend(spell.cost):
+        return False
+    _draw_bolt(agent, spell, (monster.x, monster.y), config)
     monster.hp -= spell.damage
     agent.cooldowns[spell.key] = spell.cooldown
     agent.casts += 1
@@ -382,6 +391,41 @@ def _cast(agent: AgentState, world, rng: random.Random, config: Config) -> bool:
     if monster.hp <= 0:
         _kill(agent, monster, world, rng, config)
     return True
+
+
+def _recover_mana(agent: AgentState, mind, config: Config) -> None:
+    """Trickle mana back, at whatever ceiling the worn gear allows."""
+    if agent.stats is None or not config.mp_regen_ticks:
+        return
+    if agent.tick_count % max(1, config.mp_regen_ticks):
+        return
+    ceiling = getattr(agent.derived, "max_mp", None)
+    agent.stats.recover(1, ceiling)
+
+
+def _draw_bolt(agent: AgentState, spell, target, config: Config) -> None:
+    """Lay a bolt along the line it travelled, for a few ticks.
+
+    Written down rather than drawn here: this module knows nothing about a
+    screen, and both the window and the browser build their picture from the
+    same state. The agent forgets them on its own.
+    """
+    here = (agent.x, agent.y)
+    glyph = magic.bolt_glyph(here, target)
+    colour = config.spell_colors.get(spell.key, (255, 255, 255))
+    for coord in magic.trail(here, target):
+        agent.flashes.append((coord, glyph, colour, config.spell_flash_ticks))
+
+
+def _fade_flashes(agent: AgentState) -> None:
+    """Count the bolts down; drop the ones that have burned out."""
+    if not agent.flashes:
+        return
+    agent.flashes = [
+        (coord, glyph, colour, left - 1)
+        for coord, glyph, colour, left in agent.flashes
+        if left > 1
+    ]
 
 
 def _nearest_within(agent: AgentState, world, entity_at, reach: int):

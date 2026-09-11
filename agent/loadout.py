@@ -39,6 +39,7 @@ class Derived:
     attack: int
     defense: int
     max_hp: int
+    max_mp: int
     fov_radius: int
     memory_ttl: int
     flee_threat: float
@@ -87,6 +88,7 @@ def derive(stats, equipped: dict, config: Config, effects=()) -> Derived:
     attack = stats.attack
     defense = stats.defense
     max_hp = stats.max_hp
+    max_mp = stats.max_mp
     cognition = {
         "fov_radius": float(config.fov_radius),
         "memory_ttl": float(config.memory_ttl),
@@ -113,6 +115,8 @@ def derive(stats, equipped: dict, config: Config, effects=()) -> Derived:
                 defense += int(affix.amount)
             elif affix.field == "max_hp":
                 max_hp += int(affix.amount)
+            elif affix.field == "max_mp":
+                max_mp += int(affix.amount)
         attack += item.kind.attack
         defense += item.kind.defense
 
@@ -121,6 +125,7 @@ def derive(stats, equipped: dict, config: Config, effects=()) -> Derived:
         attack += running["attack"]
         defense += running["defense"]
         max_hp += running["max_hp"]
+        max_mp += running["max_mp"]
         cognition["fov_radius"] += running["fov_radius"]
         cognition["flee_threat"] += running["flee_threat"]
         cognition["w_explore"] += running["w_explore"]
@@ -129,6 +134,7 @@ def derive(stats, equipped: dict, config: Config, effects=()) -> Derived:
         attack=attack,
         defense=defense,
         max_hp=max(1, max_hp),
+        max_mp=max(0, max_mp),
         fov_radius=max(1, int(round(cognition["fov_radius"]))),
         memory_ttl=max(1, int(round(cognition["memory_ttl"]))),
         flee_threat=max(0.0, cognition["flee_threat"]),

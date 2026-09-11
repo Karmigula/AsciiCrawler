@@ -31,6 +31,7 @@ class EffectKind:
     attack: int = 0
     defense: int = 0
     max_hp: int = 0
+    max_mp: int = 0
     fov_radius: int = 0
     flee_threat: float = 0.0
     w_explore: float = 0.0
@@ -43,12 +44,14 @@ EFFECTS: tuple[EffectKind, ...] = (
     EffectKind("vigour", "vigour", True, 1200, max_hp=12),
     EffectKind("farsight", "farsight", True, 1200, fov_radius=3),
     EffectKind("resolve", "resolve", True, 900, flee_threat=0.5, w_explore=0.4),
+    EffectKind("wellspring", "wellspring", True, 1000, max_mp=10),
     # Curses
     EffectKind("weakness", "weakness", False, 700, attack=-2),
     EffectKind("brittleness", "brittleness", False, 700, defense=-2),
     EffectKind("blindness", "dimness", False, 600, fov_radius=-3),
     EffectKind("dread", "dread", False, 700, flee_threat=-0.4, w_explore=-0.3),
     EffectKind("frailty", "frailty", False, 800, max_hp=-8),
+    EffectKind("dampening", "dampening", False, 700, max_mp=-8),
 )
 
 BY_KEY = {effect.key: effect for effect in EFFECTS}
@@ -88,6 +91,7 @@ def modifiers(active) -> dict:
         "attack": 0,
         "defense": 0,
         "max_hp": 0,
+        "max_mp": 0,
         "fov_radius": 0,
         "flee_threat": 0.0,
         "w_explore": 0.0,

@@ -79,6 +79,13 @@ def hud_lines(
             health_color(stats.hp, derived.max_hp, config),
         )
     )
+    if derived.max_mp:
+        lines.append(
+            (
+                f"mp {stats.mp:3}/{derived.max_mp:<3} {_bar(stats.mp, derived.max_mp)}",
+                config.hud_mana_color,
+            )
+        )
     lines.append(
         (
             f"lvl {stats.level:<2} xp {stats.xp:<4} atk {derived.attack:<3} def {derived.defense:<3}",

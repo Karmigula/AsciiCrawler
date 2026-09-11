@@ -45,7 +45,7 @@ COGNITION_FIELDS = frozenset(
     {"fov_radius", "memory_ttl", "flee_threat", "w_explore", "threat_radius"}
 )
 
-STAT_FIELDS = frozenset({"attack", "defense", "max_hp"})
+STAT_FIELDS = frozenset({"attack", "defense", "max_hp", "max_mp"})
 
 AFFIX_POOL: tuple[Affix, ...] = (
     # --- stats -----------------------------------------------------------
@@ -54,6 +54,8 @@ AFFIX_POOL: tuple[Affix, ...] = (
     Affix("plated", "plated", "stat", "defense", 2),
     Affix("bulwark", "of the bulwark", "stat", "defense", 4),
     Affix("hale", "hale", "stat", "max_hp", 8),
+    Affix("welling", "welling", "stat", "max_mp", 6),
+    Affix("deepwell", "of the deep well", "stat", "max_mp", 12),
     Affix("giants", "of giants", "stat", "max_hp", 16),
     # --- triggers --------------------------------------------------------
     # --- spells ----------------------------------------------------------

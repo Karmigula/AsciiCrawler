@@ -291,6 +291,26 @@ class Config:
     boss_room_free_radius: int = 1  # the region around spawn keeps its throne empty
 
     kite_threat_floor: float = 2.0
+    # A bolt is drawn for this many ticks after it is thrown. Long enough to
+    # see at twelve frames a second, short enough that the room does not fill
+    # up with the last five things that were cast.
+    # Mana. Small pool, slow refill: the cost is what makes a spell an
+    # occasion rather than a rotation, and the cooldown alone was doing that
+    # job badly.
+    hud_mana_color: tuple[int, int, int] = (120, 168, 240)
+    agent_max_mp: int = 20
+    level_mp_gain: int = 4
+    mp_regen_ticks: int = 25  # one point back every this many ticks
+
+    spell_flash_ticks: int = 4
+    spell_colors: dict = field(
+        default_factory=lambda: {
+            "ember_bolt": (250, 148, 60),
+            "frost_lance": (150, 214, 245),
+            "withering": (150, 200, 120),
+            "spark": (245, 232, 150),
+        }
+    )
     boss_color: tuple[int, int, int] = (232, 180, 96)  # anything with a name
     shrine_color: tuple[int, int, int] = (198, 160, 224)  # totems, effigies, pillars
     shrine_chance: float = 0.45

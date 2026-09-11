@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Spells you can see, and mana to pay for them
+
+A bolt now draws itself along the line it travelled - a run of `-`, `|`, `/`
+or `\` in the spell's own colour, over the top of everything for a few ticks.
+Written down by the tick and painted by the frame builder, so the window and
+the browser show the same shot without either knowing about the other.
+
+Cooldowns roughly tripled. A spell that comes back in a dozen ticks is a
+melee attack with better manners, and the gap between casts is the whole
+reason backing away is worth doing.
+
+And a pool to cast from: **mp**, under the health bar in both UIs. It refills
+slowly, fills outright on a level, and gear can deepen it - so a spell is an
+occasion rather than a rotation. Cost and cooldown both gate a cast, which
+means running dry is its own kind of trouble.
+
 ### Things with names
 
 Two sorts. A **roaming** one is a mini-boss: it turns up once the creature is

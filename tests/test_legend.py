@@ -4,6 +4,12 @@ from config import DEFAULT_CONFIG
 from render.legend import legend_lines, legend_sections
 
 
+def _bolt_glyphs():
+    from sim.spells import BOLT_GLYPHS
+
+    return set(BOLT_GLYPHS.values())
+
+
 def _boss_glyphs():
     from sim.bosses import BOSSES
 
@@ -31,6 +37,7 @@ def test_the_sheet_explains_everything_that_can_be_on_screen():
         | {kind.glyph for kind in ITEMS}
         | {GRAVE.glyph, "&", DEFAULT_CONFIG.agent_glyph}
         | _boss_glyphs()
+        | _bolt_glyphs()
     )
 
     missing = sorted(drawable - _glyphs())
@@ -50,6 +57,7 @@ def test_the_sheet_explains_nothing_that_is_not_real():
         | {kind.glyph for kind in ITEMS}
         | {GRAVE.glyph, "&", DEFAULT_CONFIG.agent_glyph}
         | _boss_glyphs()
+        | _bolt_glyphs()
     )
 
     invented = sorted(_glyphs() - drawable)

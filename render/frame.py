@@ -61,6 +61,25 @@ def visible_from(world, agent, config: Config) -> set[Position]:
     }
 
 
+def paint_bolts(cells, origin: Position, agent):
+    """Draw whatever was thrown recently on top of the world.
+
+    Over everything, including the fog: a bolt is happening now and in the
+    light of its own making. Anything off the window is skipped rather than
+    clamped, so a fight at the edge does not smear down the side of it.
+    """
+    flashes = getattr(agent, "flashes", None)
+    if not flashes:
+        return cells
+    height = len(cells)
+    width = len(cells[0]) if height else 0
+    for (x, y), glyph, colour, _left in flashes:
+        column, row = x - origin[0], y - origin[1]
+        if 0 <= row < height and 0 <= column < width:
+            cells[row][column] = (glyph, colour)
+    return cells
+
+
 def boss_in_view(world, agent, config: Config):
     """The named thing the agent can see, as (name, hp, full), or None.
 
@@ -129,6 +148,7 @@ def build_frame(
         stale_tint=config.stale_tint,
     )
     cells = speckle_moss(cells, origin, Tile.FLOOR.glyph, config)
+    cells = paint_bolts(cells, origin, agent)
     if overlay is not None:
         cells = apply_overlay(cells, overlay, origin, agent, visible, mind)
     backgrounds = background_grid(

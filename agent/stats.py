@@ -22,6 +22,10 @@ class Stats:
     max_hp: int
     attack: int
     defense: int
+    # Mana. Spent to cast, refilled slowly, and refilled outright on a level
+    # the way hit points are - a promotion should feel like one.
+    mp: int = 0
+    max_mp: int = 0
     level: int = 1
     xp: int = 0
 
@@ -32,6 +36,8 @@ class Stats:
             max_hp=config.agent_max_hp,
             attack=config.agent_attack,
             defense=config.agent_defense,
+            mp=config.agent_max_mp,
+            max_mp=config.agent_max_mp,
         )
 
     @property
@@ -43,6 +49,24 @@ class Stats:
         damage = max(0, damage)
         self.hp -= damage
         return damage
+
+    def spend(self, amount: int) -> bool:
+        """Pay for a spell if there is mana for it. True if it was paid.
+
+        Asking and paying in one place: a caller that checks first and spends
+        later is a caller that eventually forgets to do one of them.
+        """
+        if amount <= 0:
+            return True
+        if self.mp < amount:
+            return False
+        self.mp -= amount
+        return True
+
+    def recover(self, amount: int, ceiling: int | None = None) -> None:
+        """Trickle mana back, never past the maximum gear allows."""
+        top = self.max_mp if ceiling is None else max(self.max_mp, ceiling)
+        self.mp = min(top, self.mp + max(0, amount))
 
     def xp_to_next(self, config: Config) -> int:
         """Total xp required to reach the level after this one."""
@@ -66,6 +90,8 @@ class Stats:
             self.xp -= self.xp_to_next(config)
             self.level += 1
             self.max_hp += config.level_hp_gain
+            self.max_mp += config.level_mp_gain
+            self.mp = self.max_mp
             self.attack += config.level_attack_gain
             self.hp = max(self.hp, self.max_hp if ceiling is None else max(self.max_hp, ceiling))
             levels += 1
