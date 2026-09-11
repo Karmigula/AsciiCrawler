@@ -130,6 +130,13 @@ kbd {
   color: var(--ink);
 }
 
+/* `hidden` has to be spelled out here. The browser hides a hidden element
+   with `[hidden] { display: none }`, but that is a user-agent rule and this
+   one is an author rule at the same specificity, so `display: grid` won it
+   and the overlay rendered open - and stayed open, because setting `hidden`
+   from the script did nothing either. */
+.overlay[hidden] { display: none; }
+
 .overlay {
   position: fixed;
   inset: 0;
@@ -157,8 +164,6 @@ kbd {
   align-items: baseline;
   margin: 0 0 0.6rem;
 }
-
-.hint { color: var(--dim); font-size: 0.72rem; letter-spacing: 0.06em; }
 
 .sheet .scroll { overflow: auto; min-height: 0; }
 

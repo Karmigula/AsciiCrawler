@@ -4,7 +4,7 @@
 
 ### Visitors can see the hall of fame
 
-Press <kbd>h</kbd> on the site, or click **hall of fame**. The dead are
+Press <kbd>h</kbd> on the site to open it and <kbd>h</kbd> again to shut it, or click **hall of fame**. The dead are
 fetched when the overlay opens rather than carried on every frame: a life
 ends rarely and a frame goes out a dozen times a second to everybody.
 

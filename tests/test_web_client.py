@@ -194,3 +194,39 @@ def test_the_hall_overlay_can_be_opened_and_shut():
     assert "openHall" in script and "closeHall" in script
     assert 'key === "escape"' in script, "escape should shut it"
     assert "<kbd>h</kbd>" in page, "the page should say which key opens it"
+
+
+def test_anything_the_page_hides_stays_hidden_under_its_own_styling():
+    """An author `display` rule beats the browser's rule for `hidden`.
+
+    The hall overlay shipped open and would not close because of exactly
+    this: `[hidden] { display: none }` is a user-agent rule, `.overlay
+    { display: grid }` is an author rule at the same specificity, so the
+    class won. Setting `hidden` from the script then did nothing visible.
+
+    Nothing else here can see that. The markup is right, the script is right,
+    the element ids all match - and the page renders with a panel over it.
+    """
+    import re
+
+    page = open("web/static/index.html", encoding="utf-8").read()
+    css = open("web/static/style.css", encoding="utf-8").read()
+
+    hidden_classes = set()
+    for tag in re.findall(r"<[^>]*\bhidden\b[^>]*>", page):
+        found = re.search(r'class="([^"]+)"', tag)
+        if found:
+            hidden_classes.update(found.group(1).split())
+
+    assert hidden_classes, "no hidden elements found; the check is not working"
+    for name in sorted(hidden_classes):
+        styles_display = re.search(
+            r"\." + re.escape(name) + r"\s*\{[^}]*display\s*:", css
+        )
+        if not styles_display:
+            continue
+        guard = re.search(r"\." + re.escape(name) + r"\[hidden\]", css)
+        assert guard, (
+            f".{name} sets display and is used with `hidden`, so it needs a "
+            f".{name}[hidden] rule or it will never hide"
+        )
