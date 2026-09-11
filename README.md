@@ -29,6 +29,10 @@ means it can be wrong, and being wrong is where the interesting behaviour comes
 from. It will flee a troll that wandered off ten minutes ago, walk into one
 that arrived after it looked away, and re-explore ground it has forgotten.
 
+**Watch it now at [asciicrawler.online](https://www.asciicrawler.online/)** —
+one world runs there and everyone who opens the page is watching the same
+creature, in the same dungeon, at the same moment.
+
 It opens on a title screen. The window is resizable — a bigger window shows
 more world rather than a magnified slice of it.
 
@@ -52,9 +56,11 @@ module by the same name and the two do not belong in one environment.
 
 ## Watching it in a browser
 
-There is a hosted version of the same game in `web/`. It is not a port: the
-server runs the identical simulation and the identical frame builder, and
-sends the finished picture down a WebSocket for the page to paint.
+The hosted version lives at
+[asciicrawler.online](https://www.asciicrawler.online/) and its code is in
+`web/`. It is not a port: the server runs the identical simulation and the
+identical frame builder, and sends the finished picture down a WebSocket for
+the page to paint.
 
 ```
 .venv\Scripts\python.exe -m uvicorn web.app:app --port 8000
