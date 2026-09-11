@@ -63,6 +63,8 @@ class AgentState:
     pickups: int = 0
     goal_name: str = "EXPLORE"
     name: str = ""
+    # Every tile entered this tick. Usually one; on ice, the whole skid.
+    crossed: list = field(default_factory=list)
     derived: object = None
     _mind: object = None
     _loadout_signature: tuple = ()
@@ -162,21 +164,38 @@ def _refresh_loadout(agent: AgentState, config: Config) -> Config:
 
 
 def _pick_up(agent: AgentState, world, config: Config) -> None:
-    """Take whatever is underfoot and re-think what to wear."""
+    """Take whatever the agent went over this tick, and re-think what to wear.
+
+    Everything it crossed, not only the tile it stopped on. A slide finishes
+    further along than it began, so loot lying on a drift could not be stood
+    on at all: the agent planned onto it, the ice took it past, and it planned
+    onto it again. One run spent sixteen thousand ticks on a single amulet.
+
+    Scooping it up in passing is also the better answer than refusing to go
+    for it. Skidding across the ice and coming away with something is exactly
+    what the terrain should feel like.
+    """
     take = getattr(world, "take_item", None)
     peek = getattr(world, "item_at", None)
     if take is None or peek is None:
         return
-    resting = peek(agent.x, agent.y)
+    for coord in agent.crossed or [(agent.x, agent.y)]:
+        _take_one(agent, world, config, coord, take, peek)
+    agent.crossed = []
+
+
+def _take_one(agent: AgentState, world, config: Config, coord, take, peek) -> None:
+    """Lift whatever is on one tile the agent covered."""
+    resting = peek(*coord)
     if resting is None:
         return
     if resting.kind.key == "grave":
         return  # a headstone is scenery: look, do not lift
-    item = take(agent.x, agent.y)
+    item = take(*coord)
     if item is None:
         return
     agent.pickups += 1
-    here = (agent.x, agent.y)
+    here = coord
     # Only equippable gear counts as robbing a grave, and only while something
     # of the agent's is still lying there: otherwise a headstone tile reports a
     # robbery forever, including for unrelated loot that later falls on it.
@@ -359,30 +378,36 @@ def _try_step(
             _kill(agent, monster, world, rng, config)
         return ATTACKED
     agent.x, agent.y = nxt
-    _slide(agent, dx, dy, world, config)
+    agent.crossed = [nxt, *_slide(agent, dx, dy, world, config)]
     _spring_trap(agent, world, config)
     return MOVED
 
 
-def _slide(agent: AgentState, dx: int, dy: int, world, config: Config) -> None:
+def _slide(agent: AgentState, dx: int, dy: int, world, config: Config) -> list:
     """Ice carries the agent on in the direction it was already going.
+
+    Returns the tiles it was carried across, because what the agent went over
+    matters and not only where it stopped.
 
     Capped: a slide long enough to cross a frozen hall stops reading as a
     hazard and starts reading as teleportation. Stops early at anything it
     cannot enter, which is what makes ice interesting - the agent plans a
     route and the floor disagrees with the plan.
     """
+    crossed: list = []
     for _ in range(max(0, config.ice_slide_max)):
         if not world.tile_at(agent.x, agent.y).slippery:
-            return
+            return crossed
         ahead = (agent.x + dx, agent.y + dy)
         tile = world.tile_at(*ahead)
         if not tile.passable:
-            return
+            return crossed
         entity_at = getattr(world, "entity_at", None)
         if entity_at is not None and entity_at(*ahead) is not None:
-            return  # slid into something; the collision stops the slide
+            return crossed  # slid into something; the collision stops the slide
         agent.x, agent.y = ahead
+        crossed.append(ahead)
+    return crossed
 
 
 def _spring_trap(agent: AgentState, world, config: Config) -> None:
@@ -502,6 +527,9 @@ def _resolve_death(agent: AgentState, world, config: Config) -> None:
     agent.name = names.name_for(getattr(world, "seed", 0), agent.deaths)
     agent.stats = Stats.starting(config)
     agent.fleer.stand_down()
+    # Whatever it walked over before dying is somewhere else now, and the body
+    # is back at the spawn: an unspent skid must not follow it there.
+    agent.crossed = []
     spawn = getattr(world, "spawn", (agent.x, agent.y))
     agent.x, agent.y = spawn
     agent.explorer.drop_plan()

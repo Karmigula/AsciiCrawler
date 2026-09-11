@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### An amulet on the ice could end a run
+
+Picking things up read only the tile the agent finished its move on, and a
+slide finishes further along than it started. So loot lying on a drift could
+not be stood on at all: the agent planned onto it, the ice carried it past,
+and it planned onto it again. One run spent sixteen thousand ticks on a
+single amulet, with 166 tiles explored.
+
+A slide now collects what it crosses. Refusing to go for unreachable loot
+would also have fixed it, and would have been the worse answer - skidding
+across the ice and coming away with something is what the terrain should feel
+like.
+
 ### The same creature kept turning up
 
 Not the name generator - it makes a thousand distinct names in a thousand

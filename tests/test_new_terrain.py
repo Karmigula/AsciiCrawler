@@ -470,3 +470,56 @@ def test_a_frontier_tile_stranded_mid_drift_is_still_worth_going_to():
 
     assert (2, 0) in cost, "a tile the slide passes over should be reachable"
     assert (2, 0) in came_from, "and it should be plannable to"
+
+
+class LootWorld(TerrainWorld):
+    """A terrain strip that also has things lying on it."""
+
+    def __init__(self, row, items=None):
+        super().__init__(row)
+        self.items = dict(items or {})
+        self.taken = []
+
+    def item_at(self, x, y):
+        return self.items.get((x, y))
+
+    def take_item(self, x, y):
+        item = self.items.pop((x, y), None)
+        if item is not None:
+            self.taken.append((x, y))
+        return item
+
+
+def test_loot_on_the_ice_is_picked_up_on_the_way_past():
+    """An adventure could be softlocked by an amulet lying on a drift.
+
+    Picking up read only the tile the agent finished on, and a slide finishes
+    somewhere further along - so the agent planned onto the loot, the ice took
+    it past, and it planned onto the loot again. One run spent sixteen
+    thousand ticks doing that with 166 tiles explored.
+    """
+    from dataclasses import replace
+
+    from agent.stats import Stats
+    from sim.items import ITEMS
+    from sim.tick import AgentState, MOVED, _try_step
+
+    config = replace(DEFAULT_CONFIG, ice_slide_max=3)
+    row = _floor_strip()
+    for x in range(3, 9):
+        row[(x, 0)] = Tile.ICE
+    kind = next(item for item in ITEMS if item.key == "gold")
+    prize = type("Lying", (), {"kind": kind, "x": 5, "y": 0})()
+    world = LootWorld(row, {(5, 0): prize})
+
+    agent = AgentState(x=2, y=0)
+    agent.stats = Stats.starting(config)
+    agent.derived = _bundle(agent.stats)
+
+    assert _try_step(agent, (3, 0), world, random.Random(1), config) == MOVED
+    from sim.tick import _pick_up
+
+    _pick_up(agent, world, config)
+
+    assert agent.x > 5, "the slide should have carried it past the loot"
+    assert (5, 0) in world.taken, "it slid straight over the loot and left it"
