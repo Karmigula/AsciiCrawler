@@ -26,6 +26,7 @@ from config import Config
 from sim import effects as status
 from sim.combat import monster_hits_agent, monster_hits_agent_at_range
 from sim.monsters import effective_speed, fade
+from sim.spells import clear_shot
 from sim.perks import on_hit_taken
 
 Position = tuple[int, int]
@@ -63,7 +64,9 @@ def take_turns(
             # It can hit from here, so it does rather than closing. Only when
             # the agent is already in sight: a thing that shoots through rock
             # is not frightening, it is broken.
-            if gap <= config.monster_sight_radius:
+            if gap <= config.monster_sight_radius and clear_shot(
+                world, (monster.x, monster.y), agent_pos
+            ):
                 landed = monster_hits_agent_at_range(
                     monster, agent.stats, agent.derived, rng, config
                 )

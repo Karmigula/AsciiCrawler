@@ -160,3 +160,63 @@ def test_a_totem_is_seen_but_never_picked_up():
 
     assert session.world.item_at(shrine.x, shrine.y) is None
     assert session.world.shrine_at(shrine.x, shrine.y) is shrine
+
+
+def test_a_totem_is_worth_walking_to():
+    """It used to be worth nothing, so the creature only ever blundered into one.
+
+    A totem is remembered like loot and priced like curiosity: the agent knows
+    there is one over there and cannot know what it will do, which is exactly
+    the information a creature without x-ray vision would have.
+    """
+    from agent.goals import expected_upgrade
+
+    assert expected_upgrade("&", {}, DEFAULT_CONFIG, health=1.0) > 0.0
+
+
+def test_a_bleeding_creature_is_less_curious():
+    """A curse at full health is a nuisance; at a fifth of it, it is the end."""
+    from agent.goals import expected_upgrade
+
+    healthy = expected_upgrade("&", {}, DEFAULT_CONFIG, health=1.0)
+    hurt = expected_upgrade("&", {}, DEFAULT_CONFIG, health=0.2)
+
+    assert hurt < healthy
+
+
+def test_it_goes_and_touches_totems_rather_than_tripping_over_them():
+    """The difference between seeking and blundering, measured."""
+    touched = 0
+    for seed in (3, 5, 7):
+        session = Session(DEFAULT_CONFIG, seed=seed, record_hall=False)
+        for _ in range(6000):
+            session.advance(1)
+        touched += session.agent.shrines_touched
+
+    assert touched >= 6, f"only {touched} totems touched across three worlds"
+
+
+def test_a_spent_totem_stops_being_interesting():
+    """The glyph stays on the floor and memory cannot tell it has gone quiet."""
+    session = Session(DEFAULT_CONFIG, seed=3, record_hall=False)
+    session.advance(2)
+    shrine = _first_shrine(session.world)
+    assert shrine is not None
+
+    session.agent.x, session.agent.y = shrine.x, shrine.y
+    session.agent.crossed = []
+    session.advance(1)
+
+    assert (shrine.x, shrine.y) in session.agent.spent_shrines
+
+    from agent.goals import LootGoal
+
+    decision = LootGoal().decide(
+        (shrine.x, shrine.y + 2),
+        session.agent.memory,
+        session.agent.equipped,
+        DEFAULT_CONFIG,
+        skip=session.agent.spent_shrines,
+    )
+    target = decision[0] if decision else None
+    assert target != (shrine.x, shrine.y), "it went back to a spent totem"

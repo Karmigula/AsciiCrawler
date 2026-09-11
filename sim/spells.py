@@ -95,6 +95,28 @@ def bolt_glyph(origin, target) -> str:
     return BOLT_GLYPHS.get((dx, dy), "*")
 
 
+def clear_shot(world, origin, target) -> bool:
+    """Whether a bolt can get from one tile to the other without hitting rock.
+
+    Only walls stop it. Liquids do not: a bolt over a lava pool is fine, and
+    treating "cannot walk there" as "cannot shoot over it" would have anything
+    with a reach refusing to fire across half the ashfields.
+
+    Being visible is not the same as having a clear line. Field of view is
+    generous at the corners by design - it is about what an eye catches - and
+    a bolt drawn to something glimpsed past a corner travels through the
+    corner. So both are checked, and this is the strict one.
+    """
+    from world.tiles import Tile
+
+    for coord in trail(origin, target):
+        if coord == target:
+            return True
+        if world.tile_at(*coord) is Tile.WALL:
+            return False
+    return True
+
+
 def ready(spell_keys, cooldowns: dict, mana: int | None = None) -> list[Spell]:
     """Which of the creature's spells can be cast this tick, best first.
 

@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Fixed
+
+- **Spells fired through walls, at things nobody had seen.** Targeting
+  scanned a square and asked what was standing in it, with no reference to
+  sight at all - so a bolt left the creature, crossed a wall, and hit
+  something on the far side. Both the agent and anything with a reach now
+  need to see the target *and* have a clear line to it: field of view is
+  generous at corners by design, and a bolt drawn to something glimpsed past
+  one travels through the corner.
+- **It walked past totems.** A shrine was remembered like loot and priced at
+  nothing, so it could only ever be touched by accident. It is now worth
+  going to - as curiosity rather than expected value, because the creature
+  cannot know whether this biome's answers are kind - and less so when hurt,
+  when a curse is the end of the run rather than a nuisance. Across three
+  worlds it now touches 21 where it used to trip over one or two.
+- **It rarely had a potion when it needed one.** Potions were priced flat,
+  the same as a coin, whether it had none and was bleeding or twenty and
+  untouched. They are priced by shortage now, and gold - which nothing in
+  this world buys anything with - is priced as the souvenir it is.
+
 ### Spells you can see, and mana to pay for them
 
 A bolt now draws itself along the line it travelled - a run of `-`, `|`, `/`

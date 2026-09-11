@@ -36,6 +36,7 @@ from config import Config
 from sim.items import ITEMS
 
 ITEM_BY_GLYPH = {kind.glyph: kind for kind in ITEMS}
+SHRINE_GLYPH = "&"
 
 Decision = tuple[Position, list[Position]]  # (target, steps after start)
 
@@ -284,7 +285,13 @@ class FleeGoal:
         self.path = []
 
 
-def expected_upgrade(glyph: str, equipped: dict, config: Config) -> float:
+def expected_upgrade(
+    glyph: str,
+    equipped: dict,
+    config: Config,
+    potions: int = 0,
+    health: float = 1.0,
+) -> float:
     """What the agent *guesses* a remembered item is worth, from its glyph alone.
 
     This is the belief rule applied to loot. Memory holds a glyph, not an item:
@@ -292,12 +299,35 @@ def expected_upgrade(glyph: str, equipped: dict, config: Config) -> float:
     of the long mind. So LOOT prices an empty slot highly and a filled one
     modestly, and the agent walks over to find out - which is exactly how a
     creature without x-ray vision would behave.
+
+    A potion is priced by need rather than at a flat rate. It used to be worth
+    the same as a coin whether the creature had none and was bleeding or
+    twenty and untouched, which is why it so rarely had one when it mattered:
+    over twenty thousand ticks it spent 1,219 of them hurt enough to drink and
+    was holding a potion for 66 of those.
     """
+    if glyph == SHRINE_GLYPH:
+        # A totem is a question, not a prize. The agent knows there is one
+        # over there and nothing else - not whether this biome's answers are
+        # kind - so it is priced as curiosity, and curiosity is cheaper when
+        # you are bleeding: a curse at full health is a nuisance, and a curse
+        # at a fifth of it is the end of the run.
+        return config.loot_expectation * config.w_shrine * min(1.0, health * 1.4)
     kind = ITEM_BY_GLYPH.get(glyph)
     if kind is None:
         return 0.0
+    if kind.key == "gold":
+        # Worth picking up on the way past, never worth a detour: nothing in
+        # this world sells anything.
+        return config.loot_expectation * config.w_gold
+    if kind.key == "potion":
+        shortage = max(0.0, 1.0 - potions / max(1, config.potion_reserve))
+        hurt = max(0.0, 1.0 - health)
+        return config.loot_expectation * (
+            config.w_potion * (0.35 + shortage) * (1.0 + config.w_potion_hurt * hurt)
+        )
     if kind.slot is None:
-        return config.loot_expectation * 0.5  # a potion is always some use
+        return config.loot_expectation * 0.5
     if equipped.get(kind.slot) is None:
         return config.loot_expectation * 2.0  # an empty slot is a real prize
     return config.loot_expectation
@@ -317,6 +347,9 @@ class LootGoal:
         memory: Memory,
         equipped: dict,
         config: Config,
+        potions: int = 0,
+        health: float = 1.0,
+        skip=(),
     ) -> Decision | None:
         """Score remembered items by expected upgrade over path cost.
 
@@ -326,10 +359,12 @@ class LootGoal:
         """
         candidates = []
         for coord in memory.item_coords():
+            if coord in skip:
+                continue  # a totem it has already asked
             glyph = memory.snapshot(coord)[1]
             if glyph is None:
                 continue
-            value = expected_upgrade(glyph, equipped, config)
+            value = expected_upgrade(glyph, equipped, config, potions, health)
             if value > 0:
                 candidates.append((coord, value))
         if not candidates:

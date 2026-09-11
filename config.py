@@ -239,6 +239,22 @@ class Config:
     v_trigger: float = 0.8  # per point of trigger amount
     v_flee_penalty: float = 0.5  # recklessness is priced, not free
     equip_margin: float = 0.5  # score gain needed to bother swapping gear
+    # How many potions the creature considers enough. Below this it will go
+    # out of its way for one; above it, they are barely worth the walk.
+    # How much a totem is worth walking to. It is a gamble the agent cannot
+    # see the odds of, so this is curiosity rather than expected value.
+    w_shrine: float = 1.3
+    potion_reserve: int = 3
+    w_potion: float = 1.0
+    # Being hurt does NOT raise the price, and this is the note saying why.
+    # It read as obvious - a bleeding creature wants a potion - and measured
+    # as a death spiral: over twenty thousand ticks it was 232 deaths against
+    # 13. A remembered potion priced above everything sends a hurt creature
+    # sprinting across the map, past whatever hurt it, instead of running
+    # away. Wanting one badly is not the same as being able to afford the
+    # walk. Left as a knob because it is worth being able to try again.
+    w_potion_hurt: float = 0.0
+    w_gold: float = 0.2  # nothing sells anything, so gold is a souvenir
     potion_heal: int = 12
     potion_at_hp_fraction: float = 0.45  # drink when this hurt, not before
     w_loot: float = 1.4  # how loud a remembered item calls

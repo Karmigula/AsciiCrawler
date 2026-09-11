@@ -102,6 +102,10 @@ class AgentState:
     traps_found: int = 0
     traps_sprung: int = 0
     shrines_touched: int = 0
+    # Totems it has already asked. Remembered so it does not stand there
+    # asking a spent one over and over: the glyph is still on the floor and
+    # memory has no way of knowing it has gone quiet.
+    spent_shrines: set = field(default_factory=set)
     # Per-life, reset on death: a hall of fame entry is one life, not a career.
     life_kills: int = 0
     life_depth: int = 0
@@ -130,7 +134,7 @@ def tick(agent: AgentState, world, rng: random.Random, config: Config) -> None:
     _touch_shrine(agent, world, rng, config)
     mind = _refresh_loadout(agent, config)
     world.ensure_loaded((agent.x, agent.y))
-    if not _cast(agent, world, rng, config) and not _kite(agent, world, config):
+    if not _cast(agent, world, rng, mind) and not _kite(agent, world, config):
         _act(agent, world, rng, config)
     _observe(agent, world, mind)
     _pick_up(agent, world, config)
@@ -369,9 +373,13 @@ def _cast(agent: AgentState, world, rng: random.Random, config: Config) -> bool:
         return False
 
     here = (agent.x, agent.y)
+    radius = max(spell.reach for spell in available)
+    _window, seen, origin = _sight(agent, world, radius)
+    visible = {(origin[0] + lx, origin[1] + ly) for lx, ly in seen}
+
     best = None
     for spell in available:
-        target = _nearest_within(agent, world, entity_at, spell.reach)
+        target = _nearest_within(agent, world, entity_at, spell.reach, visible)
         if target is not None:
             best = (spell, target)
             break
@@ -428,22 +436,32 @@ def _fade_flashes(agent: AgentState) -> None:
     ]
 
 
-def _nearest_within(agent: AgentState, world, entity_at, reach: int):
+def _nearest_within(agent: AgentState, world, entity_at, reach: int, visible):
     """The closest monster the agent can see within `reach`, or None.
 
     Walks outward so the first hit is the nearest; the agent should be
     shooting whatever is about to reach it rather than whatever it noticed
     first.
+
+    It has to be *seen*, and there has to be a line to it. This used to check
+    neither, which is how the creature came to be firing at things it had
+    never laid eyes on, through the rock between them.
     """
+    here = (agent.x, agent.y)
     for radius in range(1, reach + 1):
         for dy in range(-radius, radius + 1):
             for dx in range(-radius, radius + 1):
                 if max(abs(dx), abs(dy)) != radius:
                     continue
                 coord = (agent.x + dx, agent.y + dy)
+                if coord not in visible:
+                    continue
                 monster = entity_at(*coord)
-                if monster is not None:
-                    return monster
+                if monster is None:
+                    continue
+                if not magic.clear_shot(world, here, coord):
+                    continue
+                return monster
     return None
 
 
@@ -463,6 +481,7 @@ def _touch_shrine(agent: AgentState, world, rng: random.Random, config: Config) 
         if shrine is None or shrine.spent:
             continue
         shrine.spent = True
+        agent.spent_shrines.add(coord)
         blessed = rng.random() < shrine.blessing_chance
         pool = status.BLESSINGS if blessed else status.CURSES
         key = pool[rng.randrange(len(pool))]
@@ -868,6 +887,21 @@ def _respawn_pass(agent: AgentState, world, config: Config) -> None:
         sweep((agent.x, agent.y), agent.tick_count, config)
 
 
+def _sight(agent: AgentState, world, radius: int):
+    """(window, visible-in-local-coords, origin) for a field of view from here.
+
+    Shared by looking and by shooting so the two cannot disagree about what
+    the creature can see - which they did: casting scanned a square and asked
+    what was standing there, with no reference to sight at all.
+    """
+    origin_x, origin_y = agent.x - radius, agent.y - radius
+    window = [
+        [world.tile_at(origin_x + lx, origin_y + ly) for lx in range(2 * radius + 1)]
+        for ly in range(2 * radius + 1)
+    ]
+    return window, compute_fov(window, (radius, radius), radius), (origin_x, origin_y)
+
+
 def _observe(agent: AgentState, world, config: Config) -> None:
     """FOV through a (2r+1)-square window of global tiles around the agent.
 
@@ -876,12 +910,7 @@ def _observe(agent: AgentState, world, config: Config) -> None:
     through `tile_at`, never by reaching into chunk internals.
     """
     radius = config.fov_radius
-    origin_x, origin_y = agent.x - radius, agent.y - radius
-    window = [
-        [world.tile_at(origin_x + lx, origin_y + ly) for lx in range(2 * radius + 1)]
-        for ly in range(2 * radius + 1)
-    ]
-    seen = compute_fov(window, (radius, radius), radius)
+    window, seen, (origin_x, origin_y) = _sight(agent, world, radius)
     # Lava lights terrain through walls, deliberately. It must not also reveal
     # what is standing in the light: entity sightings feed the threat field,
     # and the agent should not flee a monster it cannot see through rock.
@@ -1033,7 +1062,24 @@ def _think(agent: AgentState, rng: random.Random, config: Config) -> None:
         agent.memory, agent.tick_count, config.explore_throttle_ticks
     ):
         return
-    if agent.looter.decide(here, agent.memory, agent.equipped, config) is not None:
+    # What it is carrying and how hurt it is both change what loot is worth:
+    # a potion is a prize to a bleeding creature with none and clutter to a
+    # healthy one with a bagful.
+    health = 1.0
+    if agent.stats is not None and agent.derived is not None:
+        health = agent.stats.hp / max(1, agent.derived.max_hp)
+    if (
+        agent.looter.decide(
+            here,
+            agent.memory,
+            agent.equipped,
+            config,
+            agent.potions,
+            health,
+            agent.spent_shrines,
+        )
+        is not None
+    ):
         agent.explorer.drop_plan()
         agent.goal_name = "LOOT"
         return

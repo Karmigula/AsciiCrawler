@@ -92,9 +92,22 @@ def test_casting_spends_and_the_pool_trickles_back():
     assert spent_at is not None, "it never cast; the test proves nothing"
     assert spent_at < session.agent.derived.max_mp, "casting was free"
 
-    for _ in range(DEFAULT_CONFIG.mp_regen_ticks * 3):
+    # Watched rather than checked once at the end: the cooldown is shorter
+    # than the window, so a second cast can spend the pool back down and an
+    # end-state assertion then fails for the wrong reason.
+    casts = session.agent.casts
+    recovered = False
+    for _ in range(DEFAULT_CONFIG.mp_regen_ticks * 4):
         session.advance(1)
-    assert session.agent.stats.mp > spent_at, "the pool never came back"
+        if session.agent.casts != casts:
+            spent_at = session.agent.stats.mp
+            casts = session.agent.casts
+            continue
+        if session.agent.stats.mp > spent_at:
+            recovered = True
+            break
+
+    assert recovered, "the pool never came back"
 
 
 # --- what it looks like ---

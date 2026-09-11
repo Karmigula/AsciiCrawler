@@ -203,3 +203,41 @@ def test_explore_looks_past_the_sample_when_everything_near_is_walled_off():
     assert decision is not None, "reachable frontier existed but the goal yielded"
     assert not goal.yielded
     assert goal.target == (4, 40)  # the corridor end, past the sample
+
+
+def test_a_potion_is_priced_by_how_few_it_has():
+    """A flat price meant it wanted one as much with twenty as with none."""
+    from agent.goals import expected_upgrade
+    from config import DEFAULT_CONFIG
+
+    empty_handed = expected_upgrade("!", {}, DEFAULT_CONFIG, potions=0)
+    well_stocked = expected_upgrade("!", {}, DEFAULT_CONFIG, potions=20)
+
+    assert empty_handed > well_stocked * 2
+
+
+def test_gold_is_a_souvenir():
+    """Nothing in this world sells anything, so it is worth the walk to nothing."""
+    from agent.goals import expected_upgrade
+    from config import DEFAULT_CONFIG
+
+    coin = expected_upgrade("$", {}, DEFAULT_CONFIG)
+    potion = expected_upgrade("!", {}, DEFAULT_CONFIG, potions=0)
+
+    assert coin < potion
+
+
+def test_being_hurt_does_not_make_it_chase_potions():
+    """This read as obvious and measured as a death spiral.
+
+    A remembered potion priced above everything sends a bleeding creature
+    sprinting across the map, past whatever hurt it, instead of running away:
+    232 deaths over twenty thousand ticks against 13 without it.
+    """
+    from agent.goals import expected_upgrade
+    from config import DEFAULT_CONFIG
+
+    healthy = expected_upgrade("!", {}, DEFAULT_CONFIG, potions=0, health=1.0)
+    bleeding = expected_upgrade("!", {}, DEFAULT_CONFIG, potions=0, health=0.1)
+
+    assert bleeding == healthy
