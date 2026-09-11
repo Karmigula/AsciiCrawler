@@ -73,7 +73,7 @@ nothing.
 | `CRAWLER_COLS` / `CRAWLER_ROWS` | size of the window | 104 × 36 |
 | `CRAWLER_FPS` | frames a second to aim for | 8 |
 | `CRAWLER_WORLD_TICKS` | roll a fresh world after this many ticks | 40,000 |
-| `CRAWLER_SEED` | which world to start on | config default |
+| `CRAWLER_SEED` | which world to start on | a fresh one each boot, logged |
 | `CRAWLER_HUD_CHARS` | width the side panel is clipped to | 46 |
 | `CRAWLER_NEW_WORLD_ON_DEATH` | `0` to stay in the same dungeon after a death | on |
 | `CRAWLER_HALL` | `1` to write the hall of fame to disk | off |
