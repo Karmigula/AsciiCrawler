@@ -48,7 +48,14 @@ def test_the_world_seed_reaches_population_through_the_chunk_store():
 
 
 def test_nothing_spawns_on_a_wall_or_a_liquid():
-    """Spawns land on FLOOR only — a monster in lava is unreachable forever."""
+    """Spawns land on ground that can be walked on.
+
+    This asked for FLOOR exactly, which was the same thing until ice and fog
+    arrived - both walkable, both scattered across whole biomes. Asserting the
+    tile rather than the property meant the test agreed with a bug that left a
+    sixth of those chunks empty. What it is really protecting against is a
+    monster in lava, unreachable forever, and that is what it now says.
+    """
     store = ChunkStore(DEFAULT_CONFIG, world_seed=3)
     size = DEFAULT_CONFIG.chunk_size
     for cx, cy in ((0, 0), (4, 4), (-9, 6)):
@@ -58,7 +65,8 @@ def test_nothing_spawns_on_a_wall_or_a_liquid():
             + [(i.x, i.y) for i in chunk.contents.items]
             + [(t.x, t.y) for t in chunk.contents.traps]
         ):
-            assert chunk.tiles[y - cy * size, x - cx * size] == FLOOR
+            tile = Tile(int(chunk.tiles[y - cy * size, x - cx * size]))
+            assert tile.passable, f"something spawned on {tile.name}"
 
 
 def test_nothing_spawns_on_the_chunk_centre():
@@ -149,3 +157,84 @@ def test_zero_density_config_spawns_nothing():
     )
     contents = populate(random.Random(1), _open_chunk(), 4, 4, cfg)
     assert not contents.monsters and not contents.items and not contents.traps
+
+
+def test_a_refilled_chunk_keeps_its_biome_bestiary():
+    """A cleared station used to refill with rats.
+
+    `populate` honoured the biome's monsters and `try_respawn` did not, so a
+    themed chunk stayed themed exactly until the agent had killed what was in
+    it - and the theme was strongest in the places worth walking to.
+    """
+    import random
+
+    from config import DEFAULT_CONFIG
+    from world.chunks import ChunkStore
+
+    store = ChunkStore(DEFAULT_CONFIG, world_seed=3)
+    themed = None
+    for cx in range(-8, 9):
+        for cy in range(-8, 9):
+            biome = store.biome_of(cx, cy)
+            if biome.monsters:
+                themed = (cx, cy, biome)
+                break
+        if themed:
+            break
+    assert themed, "no biome in range declares its own bestiary"
+    cx, cy, biome = themed
+
+    chunk = store.get_chunk(cx, cy)
+    chunk.contents.monsters.clear()
+    chunk.contents.respawn_tick = 0
+    from world.populate import try_respawn
+
+    spawned = []
+    for tick in range(0, 400):
+        chunk.contents.respawn_tick = 0
+        monster = try_respawn(
+            random.Random(tick),
+            chunk.tiles,
+            cx,
+            cy,
+            chunk.contents,
+            DEFAULT_CONFIG,
+            tick,
+            allowed=biome.monsters,
+        )
+        if monster:
+            spawned.append(monster.kind.glyph)
+        if len(spawned) > 25:
+            break
+
+    assert spawned, "nothing respawned; the test proves nothing"
+    assert set(spawned) <= set(biome.monsters), (
+        f"{biome.key} respawned {set(spawned) - set(biome.monsters)}"
+    )
+
+
+def test_spawns_use_every_walkable_tile_not_just_bare_floor():
+    """Ice and fog are walked on, so things belong on them.
+
+    Spelling the rule as FLOOR quietly thinned the biomes that scatter other
+    passable ground: a sixth of a spore chunk was ineligible for anything.
+    """
+    import random
+
+    import numpy as np
+
+    from config import DEFAULT_CONFIG
+    from world.populate import populate
+    from world.tiles import Tile
+
+    size = DEFAULT_CONFIG.chunk_size
+    tiles = np.full((size, size), int(Tile.WALL), dtype=np.int8)
+    # A room of nothing but ice and fog, with no bare floor anywhere.
+    tiles[2 : size - 2, 2 : size - 2] = int(Tile.ICE)
+    tiles[2 : size // 2, 2 : size - 2] = int(Tile.HAZE)
+
+    contents = populate(random.Random(5), tiles, 6, 6, DEFAULT_CONFIG)
+
+    assert contents.monsters or contents.items, (
+        "a chunk of walkable ice and fog spawned nothing at all"
+    )

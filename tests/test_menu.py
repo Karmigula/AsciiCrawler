@@ -93,3 +93,39 @@ def test_entries_line_up_in_one_column():
         if blurb in line
     }
     assert len(blurb_columns) == 1, "every blurb starts in the same column"
+
+
+def test_every_screen_title_renders_with_all_its_letters():
+    """Titles were drawn from an alphabet that only covered the word CRAWLER.
+
+    Unknown letters fall back to blanks, so SETTINGS shipped as "SE  I  S",
+    SOAK as "S A " and HALL as " ALL" - three screens with holes punched in
+    their headings and nothing anywhere to say so.
+    """
+    from render.menu import _LETTERS
+
+    for title in ("CRAWLER", "SETTINGS", "SOAK", "HALL"):
+        for letter in title:
+            assert letter in _LETTERS, f"{title} has no block letter for {letter!r}"
+        rows = block_text(title)
+        for row in rows:
+            assert row.strip(), "a title row came out empty"
+        # Every letter contributes ink, so no five-column slice is all blank.
+        for index in range(len(title)):
+            at = index * 6
+            slice_ = [row[at : at + 5] for row in rows]
+            assert any(cell.strip() for cell in slice_), (
+                f"{title!r} renders a gap where {title[index]!r} should be"
+            )
+
+
+def test_the_alphabet_covers_letters_and_digits():
+    """So the next title someone writes does not come out with holes in it."""
+    from string import ascii_uppercase, digits
+
+    from render.menu import _LETTERS
+
+    for letter in ascii_uppercase + digits:
+        assert letter in _LETTERS, f"no block letter for {letter!r}"
+        assert len(_LETTERS[letter]) == 5, letter
+        assert all(len(row) == 5 for row in _LETTERS[letter]), letter

@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Fixed after review
+
+- **Three menu screens had holes in their titles.** The block alphabet only
+  covered the letters in "CRAWLER", and unknown letters fall back to blanks -
+  so SETTINGS read "SE  I  S", SOAK read "S A " and HALL read " ALL". The
+  alphabet is now complete, with digits, and a test renders every title and
+  fails on a gap.
+- **A cleared themed chunk refilled with the wrong monsters.** Initial
+  population honoured the biome's bestiary and respawning did not, so a
+  derelict station stayed a station only until the agent had killed what was
+  in it, then started producing rats.
+- **Ice and fog could not be spawned on.** Spawning asked for FLOOR, which
+  stopped meaning "walkable" when those arrived - about a sixth of a spore
+  chunk was ineligible for any monster, item or trap.
+- **One stuck viewer froze the web for everyone.** Frames were sent to
+  viewers one after another with no deadline, and a send does not fail when a
+  client stops reading - it waits for the transport, which is minutes. Sends
+  are concurrent and deadlined now; a viewer who cannot take a frame misses
+  it and is dropped.
+- **The browser leaked a keep-alive timer per reconnect**, so a tab left open
+  through a few network hiccups sent its keep-alive several times over.
+- **"a orc".** Death causes pick their own article now.
+
 ### Everything down there has a name now
 
 The creature is born with one, the HUD says it above everything else, and the

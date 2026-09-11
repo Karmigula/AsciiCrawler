@@ -198,6 +198,7 @@ def test_a_bad_frame_costs_a_frame_and_not_the_aquarium():
             viewers=web_app.Viewers(),
             latest="",
             failures=0,
+            failing=0,
             frames=0,
         )
         app = SimpleNamespace(state=state)
@@ -271,3 +272,99 @@ def test_the_health_check_fails_when_the_loop_behind_it_has_stopped():
 
     assert answer.status_code == 503
     assert answer.json()["ok"] is False
+
+
+def test_one_stuck_viewer_does_not_hold_up_everybody_else():
+    """Sends are concurrent and deadlined, because a send does not fail fast.
+
+    A client that stops reading - a backgrounded tab, a sleeping phone - keeps
+    the send waiting for the transport to drain, which is minutes. Sent one
+    after another, that stalled the tick loop and froze the shared world for
+    every other viewer.
+    """
+    import asyncio
+    import time
+
+    pytest.importorskip("fastapi")
+    import web.app as web_app
+
+    class Stuck:
+        async def send_text(self, payload):
+            await asyncio.sleep(30)  # never lands
+
+    class Fine:
+        def __init__(self):
+            self.sent = []
+
+        async def send_text(self, payload):
+            self.sent.append(payload)
+
+    async def scenario():
+        viewers = web_app.Viewers()
+        stuck, fine = Stuck(), Fine()
+        await viewers.add(stuck)
+        await viewers.add(fine)
+        started = time.perf_counter()
+        await viewers.broadcast("frame")
+        return time.perf_counter() - started, fine, len(viewers)
+
+    took, fine, left = asyncio.run(scenario())
+
+    assert fine.sent == ["frame"], "the healthy viewer should have been served"
+    assert took < web_app.SEND_TIMEOUT + 1.0, f"broadcast took {took:.1f}s"
+    assert left == 1, "the stuck viewer should have been dropped"
+
+
+def test_the_backoff_grows_with_consecutive_failures_not_lifetime_ones():
+    """A hiccup months later should cost a quarter second, not five.
+
+    The counter that /healthz reports is a lifetime total, so using it for the
+    backoff meant a long-lived instance paused for the ceiling on its next
+    single failure.
+    """
+    import asyncio
+    from types import SimpleNamespace
+
+    pytest.importorskip("fastapi")
+    import web.app as web_app
+
+    class FakeSocket:
+        async def send_text(self, payload):
+            pass
+
+    async def scenario():
+        state = SimpleNamespace(
+            session=_session(), viewers=web_app.Viewers(),
+            latest="", failures=0, failing=0, frames=0,
+        )
+        app = SimpleNamespace(state=state)
+        await state.viewers.add(FakeSocket())
+        calls = {"n": 0}
+        real = web_app.build_payload
+
+        def flaky(session, viewers):
+            calls["n"] += 1
+            if calls["n"] in (1, 2):
+                raise RuntimeError("hiccup")
+            return real(session, viewers)
+
+        web_app.build_payload = flaky
+        runner = asyncio.create_task(web_app._run(app))
+        try:
+            for _ in range(120):
+                await asyncio.sleep(0.05)
+                if state.frames >= 2:
+                    break
+        finally:
+            runner.cancel()
+            web_app.build_payload = real
+            try:
+                await runner
+            except asyncio.CancelledError:
+                pass
+        return state
+
+    state = asyncio.run(scenario())
+
+    assert state.failures == 2, "the lifetime count is what /healthz reports"
+    assert state.failing == 0, "a good frame ends the run of bad ones"

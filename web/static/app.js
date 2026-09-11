@@ -27,6 +27,7 @@ const viewerBox = canvas && document.getElementById("viewers");
 let latest = null;
 let socket = null;
 let retryIn = 1000;
+let keepAlive = null;
 
 // Colours arrive run-length encoded as [index, count, index, count, ...].
 function expand(runs, width) {
@@ -126,7 +127,13 @@ function connect() {
     retryIn = 1000;
     // The server ignores what we send; this keeps the socket from being
     // reaped by an idle proxy, which free hosts are fond of doing.
-    setInterval(() => {
+    //
+    // Cleared before a new one starts. Every reconnect runs this handler, so
+    // an interval left behind by the last connection would stay forever, and
+    // a tab left open through a few network hiccups would end up sending its
+    // keep-alive several times over.
+    clearInterval(keepAlive);
+    keepAlive = setInterval(() => {
       if (socket && socket.readyState === WebSocket.OPEN) socket.send("watching");
     }, 25000);
   });
@@ -137,6 +144,8 @@ function connect() {
   });
 
   socket.addEventListener("close", () => {
+    clearInterval(keepAlive);
+    keepAlive = null;
     statusLine.textContent = "reconnecting…";
     setTimeout(connect, retryIn);
     retryIn = Math.min(retryIn * 2, 15000); // a sleeping free instance takes a moment

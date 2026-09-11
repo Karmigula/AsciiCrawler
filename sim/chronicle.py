@@ -36,6 +36,17 @@ class Chronicle:
         return iter(self._entries)
 
 
+def an(noun: str) -> str:
+    """"a troll", but "an orc" - the article the noun actually takes.
+
+    Death causes are written once and then read everywhere: the recent log,
+    the tombstone, the hall of fame column. "a orc" in all three is a small
+    thing that makes the whole page look machine-written.
+    """
+    article = "an" if noun[:1].lower() in "aeiou" else "a"
+    return f"{article} {noun}"
+
+
 def killed(monster) -> str:
     return f"killed the {monster.kind.key}"
 

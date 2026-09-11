@@ -6,7 +6,7 @@ spawns forever, and the further that chunk sits from the world origin the more
 monsters it holds and the deeper the table they roll from.
 
 Distance is Euclidean from the world origin measured at the chunk-center tile
-— the same metric and sample point `chunks._band_for` uses for biome bands, so
+— the same metric and sample point `chunks.biome_at` uses to choose a biome, so
 depth and biome move together instead of drifting apart.
 
 Respawn (Phase 4): a chunk the agent has cleared refills slowly, but only
@@ -26,6 +26,10 @@ from sim.affixes import describe
 from sim.items import ITEMS, ItemKind, roll_for
 from sim.monsters import MAX_TIER, MonsterKind, table_for_tier
 from world.tiles import Tile
+
+# What a spawn may stand on. Not FLOOR: ice and fog are walked on too, and
+# leaving them out thinned every chunk that scatters them.
+WALKABLE = frozenset(int(tile) for tile in Tile if tile.passable)
 
 Position = tuple[int, int]
 
@@ -169,20 +173,24 @@ def populate(
 ) -> ChunkContents:
     """Roll this chunk's contents from its own seeded rng. Never mutates tiles.
 
-    Spawns land only on FLOOR (liquids are impassable, so anything standing in
-    one would be unreachable for good) and never on the chunk-center tile,
-    which the pipeline carves as its connectivity anchor and chunk (0, 0) uses
-    as the agent's spawn.
+    Spawns land on anything walkable and never on the chunk-center tile, which
+    the pipeline carves as its connectivity anchor and chunk (0, 0) uses as the
+    agent's spawn. Liquids are excluded because they are impassable, so
+    anything standing in one would be unreachable for good.
+
+    "Walkable" rather than "FLOOR" because that stopped being the same thing.
+    Ice and fog are passable, and the biomes that scatter them turn a sixth of
+    a chunk's walkable ground into one or the other - so spelling the rule as
+    FLOOR quietly thinned every frozen and spore chunk by that much.
     """
     size = config.chunk_size
     center = (size // 2, size // 2)
-    floor = int(Tile.FLOOR)
     cells = tiles.tolist()
     spots = [
         (x, y)
         for y in range(tiles.shape[0])
         for x in range(tiles.shape[1])
-        if cells[y][x] == floor and (x, y) != center
+        if cells[y][x] in WALKABLE and (x, y) != center
     ]
     contents = ChunkContents(respawn_cap=config.respawn_cap_per_chunk)
     if not spots:
@@ -194,10 +202,7 @@ def populate(
     )
     table = table_for_tier(max_tier_for(cx, cy, config))
     if allowed:
-        # The biome's own bestiary, intersected with what this depth unlocks.
-        # A shallow ossuary still gets rats rather than nothing: the depth
-        # gradient wins, and the theme narrows what is left.
-        themed = tuple(kind for kind in table if kind.glyph in allowed)
+        themed = _themed(table, allowed)
         table = themed or table
 
     rng.shuffle(spots)
@@ -239,6 +244,17 @@ def populate(
     return contents
 
 
+def _themed(table: tuple, allowed: tuple) -> tuple:
+    """The biome's own bestiary, intersected with what this depth unlocks.
+
+    A shallow ossuary still gets rats rather than nothing: the depth gradient
+    wins, and the theme narrows what is left of it.
+    """
+    if not allowed:
+        return table
+    return tuple(kind for kind in table if kind.glyph in allowed) or table
+
+
 def try_respawn(
     rng: random.Random,
     tiles: np.ndarray,
@@ -247,30 +263,35 @@ def try_respawn(
     contents: ChunkContents,
     config: Config,
     tick: int,
+    allowed: tuple = (),
 ) -> Monster | None:
     """Add one monster to a thinned-out chunk, or return None.
 
     Deliberately one at a time: a cleared chunk should refill over minutes of
     watching, not snap back to full the moment the agent turns their back.
+
+    `allowed` is the biome's bestiary, and it has to be passed here as well as
+    to `populate`: without it a cleared derelict station refilled itself with
+    rats and goblins, so a themed chunk stayed themed only until the agent had
+    killed what was in it.
     """
     if tick < contents.respawn_tick or len(contents.monsters) >= contents.respawn_cap:
         return None
     size = config.chunk_size
     centre = (size // 2, size // 2)
-    floor = int(Tile.FLOOR)
     cells = tiles.tolist()
     occupied = {(m.x - cx * size, m.y - cy * size) for m in contents.monsters}
     spots = [
         (x, y)
         for y in range(tiles.shape[0])
         for x in range(tiles.shape[1])
-        if cells[y][x] == floor and (x, y) != centre and (x, y) not in occupied
+        if cells[y][x] in WALKABLE and (x, y) != centre and (x, y) not in occupied
     ]
     contents.respawn_tick = tick + config.respawn_cooldown_ticks
     if not spots:
         return None
     x, y = spots[rng.randrange(len(spots))]
-    table = table_for_tier(max_tier_for(cx, cy, config))
+    table = _themed(table_for_tier(max_tier_for(cx, cy, config)), allowed)
     kind = table[rng.randrange(len(table))]
     monster = Monster(kind=kind, x=cx * size + x, y=cy * size + y, hp=kind.hp)
     contents.monsters.append(monster)

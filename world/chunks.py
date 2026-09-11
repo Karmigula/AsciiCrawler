@@ -133,14 +133,18 @@ class ChunkStore:
         key = (cx, cy)
         chunk = self._chunks.get(key)
         if chunk is None:
-            tiles = _generate_chunk(self.seed, cx, cy, self._config)
+            # Once, here, and kept: generation and population both need it,
+            # and the renderer will ask for this chunk's biome on every frame
+            # the agent can see it.
+            biome = self.biome_of(cx, cy)
+            tiles = _generate_chunk(self.seed, cx, cy, self._config, biome)
             contents = populate(
                 random.Random(_hash_ints(self.seed, cx, cy, _POPULATE_SALT) % (1 << 63)),
                 tiles,
                 cx,
                 cy,
                 self._config,
-                allowed=biome_at(self.seed, cx, cy, self._config).monsters,
+                allowed=biome.monsters,
             )
             chunk = Chunk(cx, cy, tiles, contents)
             self._chunks[key] = chunk
@@ -161,15 +165,18 @@ class ChunkStore:
             for dx in range(-radius, radius + 1):
                 self.get_chunk(cx + dx, cy + dy)
 
+    def biome_of(self, cx: int, cy: int):
+        """The biome of a chunk, by chunk coordinate. Computed once, then kept."""
+        found = self._biomes.get((cx, cy))
+        if found is None:
+            found = biome_at(self.seed, cx, cy, self._config)
+            self._biomes[(cx, cy)] = found
+        return found
+
     def biome_at(self, x: int, y: int):
         """The biome of the chunk containing a global tile."""
         size = self._config.chunk_size
-        key = (x // size, y // size)
-        found = self._biomes.get(key)
-        if found is None:
-            found = biome_at(self.seed, key[0], key[1], self._config)
-            self._biomes[key] = found
-        return found
+        return self.biome_of(x // size, y // size)
 
     def biome_key_at(self, x: int, y: int) -> str:
         """Just the key, for the renderer to look a palette up with."""
@@ -264,7 +271,16 @@ class ChunkStore:
             rng = random.Random(
                 _hash_ints(self.seed, cx, cy, tick, _RESPAWN_SALT) % (1 << 63)
             )
-            if try_respawn(rng, chunk.tiles, cx, cy, chunk.contents, config, tick):
+            if try_respawn(
+                rng,
+                chunk.tiles,
+                cx,
+                cy,
+                chunk.contents,
+                config,
+                tick,
+                allowed=self.biome_of(cx, cy).monsters,
+            ):
                 added += 1
         return added
 
@@ -435,7 +451,9 @@ _BUILDERS = {
 }
 
 
-def _generate_chunk(seed: int, cx: int, cy: int, config: Config) -> np.ndarray:
+def _generate_chunk(
+    seed: int, cx: int, cy: int, config: Config, biome=None
+) -> np.ndarray:
     """The full chunk pipeline; pure function of (seed, cx, cy, config).
 
     The biome decides the shape of the place, and it comes from the region the
@@ -445,7 +463,7 @@ def _generate_chunk(seed: int, cx: int, cy: int, config: Config) -> np.ndarray:
     """
     size = config.chunk_size
     rng = random.Random(_hash_ints(seed, cx, cy) % (1 << 63))
-    biome = biome_at(seed, cx, cy, config)
+    biome = biome_at(seed, cx, cy, config) if biome is None else biome
     builder = _BUILDERS.get(biome.builder, _build_cave)
     tiles = builder(rng, size, biome.params, config)
     drift = biome.params.get("scatter")
@@ -465,24 +483,6 @@ def _generate_chunk(seed: int, cx: int, cy: int, config: Config) -> np.ndarray:
     _drill_seam_corridors(tiles, seed, cx, cy, config)
     _ensure_interior_connected(tiles)
     return tiles
-
-
-def _band_for(seed: int, cx: int, cy: int, config: Config) -> str:
-    """"bsp" | "cave" | "cavern" from the noised distance of the chunk center."""
-    mid = config.chunk_size // 2
-    gx, gy = cx * config.chunk_size + mid, cy * config.chunk_size + mid
-    distance = math.hypot(gx, gy) + _distance_noise(seed, gx, gy, config)
-    if distance < config.band_bsp_max:
-        return "bsp"
-    if distance < config.band_cavern_min:
-        return "cave"
-    return "cavern"
-
-
-def _distance_noise(seed: int, gx: int, gy: int, config: Config) -> float:
-    """Hashed uniform noise in [-band_blend_noise, +band_blend_noise]."""
-    h = _hash_ints(seed, _NOISE_SALT, gx, gy)
-    return ((h / (1 << 64)) * 2.0 - 1.0) * config.band_blend_noise
 
 
 def _edge_jitter(seed: int, kind: str, owner_cx: int, owner_cy: int, config: Config) -> int:

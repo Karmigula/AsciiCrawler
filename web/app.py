@@ -35,6 +35,13 @@ log = logging.getLogger("asciicrawler")
 # so a permanently broken world does not spin a core rendering nothing.
 RETRY_CEILING = 5.0
 
+# How long one viewer gets to accept a frame. A send does not fail when a
+# client stops reading - it waits for the transport to drain, which for a
+# suspended tab or a sleeping phone means minutes. Sequential sends made that
+# everybody's problem: the loop could not tick again until the slowest socket
+# finished, so one dead connection froze the shared world.
+SEND_TIMEOUT = 2.0
+
 
 def _env_int(name: str, default: int) -> int:
     try:
@@ -90,14 +97,35 @@ class Viewers:
             self.awake.clear()
 
     async def broadcast(self, payload: str) -> None:
-        """Send one prepared frame to everyone; drop whoever has gone away."""
+        """Send one prepared frame to everyone at once; drop whoever cannot take it.
+
+        Concurrent rather than one after another, and each send is given a
+        deadline. A viewer who has stopped reading - a backgrounded tab, a
+        phone that went to sleep - otherwise holds the whole tank still until
+        TCP gives up on them, which is minutes. Missing a frame is the right
+        cost for that; everyone else should not miss it too.
+        """
         async with self._lock:
             watching = list(self._sockets)
-        for socket in watching:
-            try:
-                await socket.send_text(payload)
-            except Exception:
+        if not watching:
+            return
+        results = await asyncio.gather(
+            *(self._send(socket, payload) for socket in watching),
+            return_exceptions=True,
+        )
+        for socket, failed in zip(watching, results):
+            if failed is not None:
                 await self.remove(socket)
+
+    async def _send(self, socket: WebSocket, payload: str):
+        """Hand one viewer a frame; return the reason if it did not land."""
+        try:
+            await asyncio.wait_for(socket.send_text(payload), timeout=SEND_TIMEOUT)
+        except asyncio.CancelledError:
+            raise
+        except Exception as reason:
+            return reason
+        return None
 
 
 def build_payload(session: Session, viewers: int) -> str:
@@ -153,9 +181,14 @@ async def _run(app: FastAPI) -> None:
             raise
         except Exception:
             app.state.failures += 1
+            app.state.failing += 1
             log.exception("frame %s failed", session.agent.tick_count)
-            await asyncio.sleep(min(RETRY_CEILING, 0.25 * app.state.failures))
+            await asyncio.sleep(min(RETRY_CEILING, 0.25 * app.state.failing))
             continue
+        # A frame that worked ends the run of bad ones. Backing off on the
+        # lifetime count instead would make a single hiccup, months later,
+        # cost the full five seconds.
+        app.state.failing = 0
         app.state.latest = payload
         app.state.frames += 1
         await viewers.broadcast(payload)
@@ -174,7 +207,8 @@ async def lifespan(app: FastAPI):
         record_hall=os.environ.get("CRAWLER_HALL", "0") == "1",
     )
     app.state.viewers = Viewers()
-    app.state.failures = 0
+    app.state.failures = 0  # lifetime, reported by /healthz
+    app.state.failing = 0  # consecutive, what the backoff grows with
     app.state.frames = 0
     # One tick before the first frame is built: the HUD reads "booting" until
     # the creature has stats, and a visitor waking a sleeping instance should

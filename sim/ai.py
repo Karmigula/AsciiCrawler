@@ -21,6 +21,7 @@ smuggle the agent's route into the world's behaviour.
 import random
 
 from agent.pathing import DIRS_8
+from sim.chronicle import an
 from config import Config
 from sim.combat import monster_hits_agent
 from sim.perks import on_hit_taken
@@ -61,7 +62,7 @@ def take_turns(
             )
             if landed:
                 # Whatever struck last gets the credit on the tombstone.
-                agent.last_wound = f"a {monster.kind.key}"
+                agent.last_wound = an(monster.kind.key)
             damage += landed
             derived = getattr(agent, "derived", None)
             if derived is not None:
