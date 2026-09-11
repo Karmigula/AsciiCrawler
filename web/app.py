@@ -25,6 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from dataclasses import replace
 
 from config import DEFAULT_CONFIG
+from render.frame import boss_in_view
 from render.hud import chronicle_lines, equipment_lines, hud_lines
 from sim import hall
 from sim.session import Session
@@ -197,6 +198,7 @@ def build_payload(session: Session, viewers: int) -> str:
         COLS,
         ROWS,
         hud=hud_lines(agent, len(session.world), wide, biome=(here.key, here.label)),
+        boss=boss_in_view(session.world, agent, config),
         worn=equipment_lines(agent, wide),
         log=chronicle_lines(agent, wide),
         viewers=viewers,

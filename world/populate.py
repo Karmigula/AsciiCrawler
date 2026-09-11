@@ -114,6 +114,9 @@ class ChunkContents:
     items: list[Item] = field(default_factory=list)
     traps: list[Trap] = field(default_factory=list)
     shrines: list[Shrine] = field(default_factory=list)
+    # (x, y, boss key) where this chunk's throned boss waits, if it has one.
+    # Held rather than spawned: a boss is built at the level it is met.
+    throne: tuple | None = None
     respawn_tick: int = 0  # Phase 4 reads this; nothing ticks it yet
     respawn_cap: int = 0
 
@@ -191,6 +194,25 @@ def max_tier_for(cx: int, cy: int, config: Config) -> int:
     return min(MAX_TIER, int(depth_fraction(cx, cy, config) * (MAX_TIER + 1)))
 
 
+def _place_boss(rng, spots, taken, contents, biome, cx, cy, config, origin) -> None:
+    """Sit a throned boss in the middle of the room that was built for it.
+
+    Placed without numbers: `Monster.hp` is filled in when the agent first
+    lays eyes on it, at whatever level it has reached by then. A boss rolled
+    at worldgen would be a wall or furniture depending on when the creature
+    happened to walk in.
+    """
+    from sim.bosses import for_biome
+
+    boss = for_biome(biome.key, throned=True) if biome else None
+    if boss is None:
+        return
+    spot = next(taken, None)
+    if spot is None:
+        return
+    contents.throne = (origin[0] + spot[0], origin[1] + spot[1], boss.key)
+
+
 def _place_shrine(rng, spots, taken, contents, biome, cx, cy, config, origin) -> None:
     """Stand one totem up, if this chunk has one and the biome has any.
 
@@ -227,6 +249,7 @@ def populate(
     config: Config,
     allowed: tuple = (),
     biome=None,
+    throne: bool = False,
 ) -> ChunkContents:
     """Roll this chunk's contents from its own seeded rng. Never mutates tiles.
 
@@ -302,6 +325,10 @@ def populate(
     _place_shrine(
         rng, spots, taken, contents, biome, cx, cy, config, (origin_x, origin_y)
     )
+    if throne:
+        _place_boss(
+            rng, spots, taken, contents, biome, cx, cy, config, (origin_x, origin_y)
+        )
     return contents
 
 

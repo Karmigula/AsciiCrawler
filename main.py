@@ -35,7 +35,7 @@ from pathlib import Path
 import pygame
 
 from config import DEFAULT_CONFIG, Config
-from render.frame import build_frame
+from render.frame import boss_in_view, build_frame
 from render.hud import (
     bag_lines,
     chronicle_lines,
@@ -343,6 +343,7 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
                     speed,
                     paused,
                     biome=(here.key, here.label),
+                    boss=boss_in_view(world, agent, config),
                 )
             )
             # Both, not one or the other: they sit in different corners, and

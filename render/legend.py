@@ -70,6 +70,25 @@ def _item_rows(config: Config) -> list[Row]:
     return rows
 
 
+def _boss_rows(config: Config) -> list[Row]:
+    """The named things, roamers first.
+
+    Listed by what sort of thing they are rather than by name, because the
+    name is rolled per creature: the sheet can say a Z is Hoarfrost and that
+    Hoarfrost hunts the frozen deep, but not what it will be called.
+    """
+    from sim.bosses import BOSSES
+
+    return [
+        (
+            boss.glyph,
+            f"{boss.title} - {'waits in a room' if boss.throned else 'roams'}",
+            config.boss_color,
+        )
+        for boss in sorted(BOSSES, key=lambda b: (b.throned, b.title))
+    ]
+
+
 def legend_sections(config: Config) -> list[tuple[str, list[Row]]]:
     """The whole sheet: (heading, rows) in reading order."""
     return [
@@ -77,6 +96,7 @@ def legend_sections(config: Config) -> list[tuple[str, list[Row]]]:
         ("ground", _tile_rows(config)),
         ("things", _item_rows(config)),
         ("company", _monster_rows(config)),
+        ("the named", _boss_rows(config)),
     ]
 
 

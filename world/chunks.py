@@ -58,7 +58,7 @@ from world import (
     gen_scatter,
     gen_station,
 )
-from world.biomes import biome_at
+from world.biomes import biome_at, throne_chunk
 from sim.items import roll_for
 from world.populate import (
     ChunkContents,
@@ -146,6 +146,7 @@ class ChunkStore:
                 self._config,
                 allowed=biome.monsters,
                 biome=biome,
+                throne=throne_chunk(self.seed, cx, cy, self._config),
             )
             chunk = Chunk(cx, cy, tiles, contents)
             self._chunks[key] = chunk
@@ -284,6 +285,25 @@ class ChunkStore:
             ):
                 added += 1
         return added
+
+    def spawn_monster(self, monster) -> None:
+        """Put a monster into whichever chunk it is standing in."""
+        chunk = self.get_chunk(*self.chunk_coords(monster.x, monster.y))
+        chunk.contents.monsters.append(monster)
+        chunk.contents.invalidate()
+
+    def thrones_near(self, origin, radius: int) -> list:
+        """Waiting bosses in the chunks around a point, with their chunk."""
+        size = self._config.chunk_size
+        cx, cy = self.chunk_coords(*origin)
+        span = radius // size + 1
+        found = []
+        for dy in range(-span, span + 1):
+            for dx in range(-span, span + 1):
+                chunk = self._chunks.get((cx + dx, cy + dy))
+                if chunk is not None and chunk.contents.throne is not None:
+                    found.append(chunk)
+        return found
 
     def shrine_at(self, x: int, y: int):
         """The shrine on a global tile, spent or not."""

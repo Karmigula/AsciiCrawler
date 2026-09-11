@@ -253,6 +253,8 @@ DEFAULT = BIOMES[0]
 
 _MASK64 = (1 << 64) - 1
 _REGION_SALT = 0xB10E5
+_THRONE_SALT = 0x7480E5
+_SPOT_SALT = 0x5E4757
 
 
 def _mix(value: int) -> int:
@@ -285,3 +287,27 @@ def biome_at(seed: int, cx: int, cy: int, config) -> Biome:
         if point < 0:
             return biome
     return BIOMES[-1]
+
+
+def throne_chunk(seed: int, cx: int, cy: int, config) -> bool:
+    """Whether this chunk is the one its region built a boss room in.
+
+    One per region at most, decided from the seed and the region alone, so a
+    throne is in the same place every time the world is grown and nothing has
+    to be remembered between sessions. Regions near the origin are left empty:
+    the first thing a new creature meets should not have a name.
+    """
+    size = max(1, config.region_size)
+    region = region_of(cx, cy, size)
+    if max(abs(region[0]), abs(region[1])) <= config.boss_room_free_radius:
+        return False
+    # Mixed the same way the biome roll is, with its own salt so the two
+    # decisions cannot correlate: a region should not be likelier to hold a
+    # throne for having come out as the ashfields.
+    stamp = _mix((region[0] << 32) ^ (region[1] & 0xFFFFFFFF))
+    roll = _mix(_mix(seed ^ _THRONE_SALT) ^ stamp)
+    if (roll % 100_000) / 100_000 >= config.boss_room_chance:
+        return False
+    # Which chunk of the region gets it, from its own draw.
+    spot = _mix(_mix(seed ^ _SPOT_SALT) ^ stamp) % (size * size)
+    return (cx - region[0] * size, cy - region[1] * size) == (spot % size, spot // size)

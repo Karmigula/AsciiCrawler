@@ -62,6 +62,7 @@ def serialize(
     rows: int,
     *,
     hud: list | None = None,
+    boss: tuple | None = None,
     worn: list | None = None,
     log: list | None = None,
     viewers: int = 0,
@@ -106,6 +107,11 @@ def serialize(
         "agent": [cols // 2, rows // 2, _hex(config.agent_color)],
         "biome": here.label,
         "hud": [[text, _hex(color)] for text, color in (hud or [])],
+        "boss": (
+            {"name": boss[0], "hp": boss[1], "full": boss[2]}
+            if boss
+            else None
+        ),
         "worn": [[text, _hex(color)] for text, color in (worn or [])],
         "log": [[text, _hex(color)] for text, color in (log or [])],
         "viewers": viewers,

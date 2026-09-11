@@ -276,7 +276,22 @@ class Config:
     # event, and the point of walking to one is that it might be the bad kind.
     # Only back away from something at least this threatening. Retreating
     # from a rat reads as cowardice and never ends, because the rat follows.
+    # Bosses. `boss_level` is when the world starts putting named things in
+    # the agent's way at all: before that it is still learning to walk, and a
+    # thing with a name would simply end it.
+    boss_level: int = 4
+    boss_scale_per_level: float = 0.18
+    # A roaming one is checked for this often, and only this far out.
+    boss_roam_interval: int = 400
+    boss_roam_chance: float = 0.25
+    boss_roam_min_distance: int = 14
+    boss_roam_max_distance: int = 26
+    # Chance a region has a throned boss somewhere in it.
+    boss_room_chance: float = 0.35
+    boss_room_free_radius: int = 1  # the region around spawn keeps its throne empty
+
     kite_threat_floor: float = 2.0
+    boss_color: tuple[int, int, int] = (232, 180, 96)  # anything with a name
     shrine_color: tuple[int, int, int] = (198, 160, 224)  # totems, effigies, pillars
     shrine_chance: float = 0.45
     shrine_free_radius: int = 2  # chunks around spawn with none in them

@@ -45,8 +45,21 @@ canvas {
   image-rendering: pixelated;
 }
 
+/* One row under the tank: what is here on the left, where it is on the
+   right. They used to be a fixed corner and a centred caption, which put them
+   at different heights and read as two unrelated things. */
+#underbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem 1.4rem;
+  width: 100%;
+  margin-top: 0.6rem;
+}
+
 #status {
-  margin: 0.6rem 0 0;
+  margin: 0;
   color: var(--dim);
   letter-spacing: 0.04em;
 }
@@ -194,3 +207,34 @@ kbd {
 .legend .row { display: flex; gap: 0.7rem; align-items: baseline; }
 .legend .row b { width: 1ch; font-weight: normal; }
 .legend .row span { color: var(--ink); }
+
+
+/* A named thing on screen gets a bar of its own, above the tank: the watcher
+   should be able to read how the fight is going without counting glyphs. */
+#boss {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+  width: 100%;
+  max-width: 46rem;
+  margin-bottom: 0.5rem;
+  color: #d7b464;
+  letter-spacing: 0.04em;
+}
+#boss[hidden] { display: none; }
+
+#boss-bar {
+  flex: 1;
+  height: 0.55rem;
+  background: #1b1b22;
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+#boss-bar i {
+  display: block;
+  height: 100%;
+  background: #d7b464;
+  transition: width 120ms linear;
+}

@@ -23,6 +23,9 @@ const hudBox = canvas && document.getElementById("hud");
 const wornBox = canvas && document.getElementById("worn");
 const logBox = canvas && document.getElementById("log");
 const viewerBox = canvas && document.getElementById("viewers");
+const bossBox = canvas && document.getElementById("boss");
+const bossName = canvas && document.getElementById("boss-name");
+const bossFill = canvas && document.querySelector("#boss-bar i");
 const hallBox = canvas && document.getElementById("hall");
 const hallTable = canvas && document.getElementById("hall-table");
 const hallNote = canvas && document.getElementById("hall-note");
@@ -106,6 +109,15 @@ function draw(frame) {
   const [ax, ay, acolor] = frame.agent;
   ctx.fillStyle = acolor;
   ctx.fillText("@", ax * cellW + cellW / 2, ay * cellH + cellH / 2);
+
+  if (frame.boss) {
+    bossBox.hidden = false;
+    bossName.textContent = frame.boss.name;
+    const share = Math.max(0, frame.boss.hp) / Math.max(1, frame.boss.full);
+    bossFill.style.width = `${share * 100}%`;
+  } else {
+    bossBox.hidden = true;
+  }
 
   hudBox.replaceChildren(...frame.hud.map(([text, color]) => tinted(text, color)));
   wornBox.replaceChildren(

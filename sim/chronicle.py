@@ -75,6 +75,14 @@ def levelled(level: int) -> str:
     return f"reached level {level}"
 
 
+def boss_stirs(name: str) -> str:
+    return f"{name} stirs"
+
+
+def boss_hunts(name: str) -> str:
+    return f"{name} is hunting"
+
+
 def cast(spell: str, target: str) -> str:
     return f"{spell} at the {target}"
 

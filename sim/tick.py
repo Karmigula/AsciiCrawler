@@ -40,6 +40,7 @@ from sim.combat import agent_hits_monster, xp_for
 from sim import chronicle as story
 from sim import effects as status
 from sim import names
+from sim import bosses as boss_table
 from sim import monsters as monsters_module
 from sim import spells as magic
 from sim.chronicle import Chronicle
@@ -73,6 +74,8 @@ class AgentState:
     # Spell cooldowns, {key: ticks left}; absent means ready.
     cooldowns: dict = field(default_factory=dict)
     casts: int = 0
+    # The wandering named thing currently after it, if any.
+    roaming_boss: object = None
     derived: object = None
     _mind: object = None
     _loadout_signature: tuple = ()
@@ -131,6 +134,8 @@ def tick(agent: AgentState, world, rng: random.Random, config: Config) -> None:
     _burn(agent, world, config)
     _choke(agent, world, config)
     _spot_traps(agent, world, rng, config)
+    _wake_thrones(agent, world, config)
+    _send_a_boss(agent, world, rng, config)
     _fade_effects(agent)
     magic.tick(agent.cooldowns)
     agent.life_depth = max(
@@ -178,6 +183,95 @@ def _refresh_loadout(agent: AgentState, config: Config) -> Config:
         agent.derived = derive(stats, agent.equipped, config, agent.effects)
         agent._mind = effective_config(config, agent.derived)
     return agent._mind
+
+
+def _boss_monster(kind_key: str, level: int, x: int, y: int, seed: int, config):
+    """Build a named thing at the level it is being met at."""
+    from world.populate import Monster
+
+    boss = next(b for b in boss_table.BOSSES if b.key == kind_key)
+    kind = boss_table.scaled(boss, level, config)
+    rng = random.Random((seed * 31 + x) * 31 + y)
+    return Monster(
+        kind=kind,
+        x=x,
+        y=y,
+        hp=kind.hp,
+        name=f"{names.given_name(rng)}, {boss.title}",
+    )
+
+
+def _wake_thrones(agent: AgentState, world, config: Config) -> None:
+    """Put the throned boss on its feet when the agent gets close enough.
+
+    Built here rather than at worldgen so its numbers come from the level the
+    creature actually arrived at. A boss rolled when the chunk was made is a
+    wall if the agent finds it early and furniture if it finds it late, and
+    neither is a fight.
+    """
+    if agent.stats is None or agent.stats.level < config.boss_level:
+        return
+    look = getattr(world, "thrones_near", None)
+    if look is None:
+        return
+    for chunk in look((agent.x, agent.y), config.chunk_size):
+        x, y, key = chunk.contents.throne
+        chunk.contents.throne = None
+        monster = _boss_monster(
+            key, agent.stats.level, x, y, getattr(world, "seed", 0), config
+        )
+        chunk.contents.monsters.append(monster)
+        chunk.contents.invalidate()
+        agent.log.record(agent.tick_count, story.boss_stirs(monster.name))
+
+
+def _send_a_boss(agent: AgentState, world, rng: random.Random, config: Config) -> None:
+    """Now and then, set something named wandering toward the agent.
+
+    Only once the creature is worth hunting, only one at a time, and never
+    within sight - a boss that appears next to you is a bug rather than a
+    fight. It walks in like anything else, which means it can also be met by
+    accident on the way somewhere.
+    """
+    if agent.stats is None or agent.stats.level < config.boss_level:
+        return
+    if agent.tick_count % max(1, config.boss_roam_interval):
+        return
+    if agent.roaming_boss is not None and agent.roaming_boss.hp > 0:
+        return
+    if rng.random() >= config.boss_roam_chance:
+        return
+    spawn = getattr(world, "spawn_monster", None)
+    if spawn is None:
+        return
+
+    for _ in range(24):
+        distance = rng.randint(config.boss_roam_min_distance, config.boss_roam_max_distance)
+        angle = rng.uniform(0, 6.283185)
+        import math
+
+        x = agent.x + int(distance * math.cos(angle))
+        y = agent.y + int(distance * math.sin(angle))
+        # Checked in the same measure sight uses. Picking a point on a circle
+        # gives a Euclidean distance, and on a diagonal that is a third
+        # shorter in Chebyshev terms - which is how a boss meant to arrive
+        # fourteen tiles out turned up thirteen away, inside the range this
+        # was supposed to keep it out of.
+        if _chebyshev((x, y), (agent.x, agent.y)) < config.boss_roam_min_distance:
+            continue
+        if not world.tile_at(x, y).passable:
+            continue
+        if world.entity_at(x, y) is not None:
+            continue
+        biome = world.biome_at(x, y)
+        boss = boss_table.roamer_for(biome.key)
+        monster = _boss_monster(
+            boss.key, agent.stats.level, x, y, getattr(world, "seed", 0), config
+        )
+        spawn(monster)
+        agent.roaming_boss = monster
+        agent.log.record(agent.tick_count, story.boss_hunts(monster.name))
+        return
 
 
 def _kite(agent: AgentState, world, config: Config) -> bool:

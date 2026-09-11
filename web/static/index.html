@@ -9,8 +9,20 @@
 <body>
 <main>
   <section id="stage">
+    <div id="boss" hidden>
+      <span id="boss-name"></span>
+      <span id="boss-bar"><i></i></span>
+    </div>
     <canvas id="view" width="900" height="600"></canvas>
-    <p id="status">connecting…</p>
+    <div id="underbar">
+      <p class="corner">
+        <span id="viewers"></span>
+        <button id="open-hall" type="button">hall of fame <kbd>h</kbd></button>
+        <button id="open-legend" type="button">symbols <kbd>j</kbd></button>
+        <a href="https://github.com/Karmigula/AsciiCrawler">source</a>
+      </p>
+      <p id="status">connecting…</p>
+    </div>
   </section>
   <aside id="side">
     <h1>AsciiCrawler</h1>
@@ -25,13 +37,6 @@
 
   </aside>
 </main>
-
-<p class="corner">
-  <span id="viewers"></span>
-  <button id="open-hall" type="button">hall of fame <kbd>h</kbd></button>
-  <button id="open-legend" type="button">symbols <kbd>j</kbd></button>
-  <a href="https://github.com/Karmigula/AsciiCrawler">source</a>
-</p>
 
 <div id="legend" class="overlay" hidden>
   <div class="sheet" role="dialog" aria-label="What the symbols mean">

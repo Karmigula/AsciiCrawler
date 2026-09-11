@@ -61,6 +61,26 @@ def visible_from(world, agent, config: Config) -> set[Position]:
     }
 
 
+def boss_in_view(world, agent, config: Config):
+    """The named thing the agent can see, as (name, hp, full), or None.
+
+    Only what is actually visible: a bar for something behind a wall would be
+    telling the watcher what the creature does not know, and this whole game
+    is built on not doing that.
+    """
+    from sim.bosses import GLYPHS
+
+    entity_at = getattr(world, "entity_at", None)
+    if entity_at is None:
+        return None
+    for coord in visible_from(world, agent, config):
+        monster = entity_at(*coord)
+        if monster is None or monster.kind.glyph not in GLYPHS:
+            continue
+        return (monster.name or monster.kind.key, max(0, monster.hp), monster.kind.hp)
+    return None
+
+
 def world_rows(world, origin: Position, cols: int, rows: int) -> list[str]:
     """The raw glyph window: what is actually there, before anyone believes it."""
     return [

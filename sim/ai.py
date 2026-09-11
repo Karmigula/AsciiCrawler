@@ -23,7 +23,9 @@ import random
 from agent.pathing import DIRS_8
 from sim.chronicle import an
 from config import Config
-from sim.combat import monster_hits_agent
+from sim import effects as status
+from sim.combat import monster_hits_agent, monster_hits_agent_at_range
+from sim.monsters import effective_speed, fade
 from sim.perks import on_hit_taken
 
 Position = tuple[int, int]
@@ -50,9 +52,26 @@ def take_turns(
     for monster in sorted(active, key=lambda m: (m.y, m.x)):
         if monster.last_moved_tick == tick:
             continue
-        if tick % max(1, monster.kind.speed):
+        if tick % max(1, effective_speed(monster)):
             continue
         monster.last_moved_tick = tick
+        fade(monster)
+
+        reach = getattr(monster.kind, "reach", 1)
+        gap = _chebyshev((monster.x, monster.y), agent_pos)
+        if reach > 1 and 1 < gap <= reach and agent.stats.alive:
+            # It can hit from here, so it does rather than closing. Only when
+            # the agent is already in sight: a thing that shoots through rock
+            # is not frightening, it is broken.
+            if gap <= config.monster_sight_radius:
+                landed = monster_hits_agent_at_range(
+                    monster, agent.stats, agent.derived, rng, config
+                )
+                if landed:
+                    agent.last_wound = an(monster.kind.key)
+                    _maybe_inflict(agent, monster, rng)
+                damage += landed
+                continue
         target = _choose_step(monster, agent_pos, rng, config)
         if target is None:
             continue
@@ -63,6 +82,7 @@ def take_turns(
             if landed:
                 # Whatever struck last gets the credit on the tombstone.
                 agent.last_wound = an(monster.kind.key)
+                _maybe_inflict(agent, monster, rng)
             damage += landed
             derived = getattr(agent, "derived", None)
             if derived is not None:
@@ -119,3 +139,18 @@ def _sign(value: int) -> int:
 
 def _chebyshev(a: Position, b: Position) -> int:
     return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
+
+
+def _maybe_inflict(agent, monster, rng: random.Random) -> None:
+    """Some things leave something behind when they land a blow.
+
+    Rolled per hit rather than applied outright: a curse that lands every
+    time from something with a four-tile reach is not a fight, it is a
+    countdown.
+    """
+    key = getattr(monster.kind, "inflicts", "")
+    if not key:
+        return
+    if rng.random() >= getattr(monster.kind, "inflict_chance", 0.25):
+        return
+    status.apply(agent.effects, key)

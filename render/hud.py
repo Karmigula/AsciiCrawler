@@ -52,6 +52,7 @@ def hud_lines(
     speed: int = 1,
     paused: bool = False,
     biome: tuple[str, str] | None = None,
+    boss: tuple | None = None,
 ) -> list[Line]:
     """Build the HUD as (text, colour) lines, top to bottom, clipped to fit.
 
@@ -67,6 +68,9 @@ def hud_lines(
     from agent.loadout import archetype
 
     lines: list[Line] = []
+    if boss is not None:
+        lines.extend(boss_lines(boss, config))
+        lines.append(("", config.hud_color))
     if agent.name:
         lines.append((agent.name, config.hud_accent_color))
     lines.append(
@@ -122,6 +126,28 @@ def hud_lines(
 
 
 _BIOME_LABEL_FLOOR = 190  # dimmest a label's strongest channel may be
+
+
+def boss_lines(boss: tuple, config) -> list[Line]:
+    """Name and health for whatever named thing is on screen.
+
+    Given its own bar rather than a line of numbers because the point of a
+    boss is that the watcher can see how the fight is going from across the
+    room, the same way they can see the creature's own health.
+    """
+    name, hp, full = boss
+    share = hp / max(1, full)
+    colour = (
+        config.hud_bad_color
+        if share <= 0.34
+        else config.hud_warn_color
+        if share <= 0.67
+        else config.hud_accent_color
+    )
+    return [
+        (fit(name, config.hud_max_chars), config.hud_accent_color),
+        (f"{_bar(hp, full)} {hp}/{full}", colour),
+    ]
 
 
 def effect_lines(agent, config) -> list[Line]:

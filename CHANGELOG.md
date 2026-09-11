@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Things with names
+
+Two sorts. A **roaming** one is a mini-boss: it turns up once the creature is
+big enough to be worth hunting, walks in from out of sight, and can be met by
+accident on the way somewhere else. A **throned** one sits in a room built for
+it - at most one per region, in the same place in every playthrough of that
+seed - and has to be gone looking for.
+
+Both are built at the level they are met rather than when the chunk was made,
+because a boss with fixed numbers is a wall if you find it early and furniture
+if you find it late. Neither is a fight.
+
+They are named: Gaurok, Cinderwake. Winterjaw. The Ash King. Most of them
+strike from several tiles away and leave something behind when they land a
+blow, which is what the kiting and the ailments were built for.
+
+A bar names whatever is on screen and shows how the fight is going - drawn
+from what the creature can actually see, so something two rooms away is not
+on it however close it is.
+
 ### Things that can hit you from across the room
 
 Rare focuses - an amulet of embers, a frostbound ring - grant a spell on a
