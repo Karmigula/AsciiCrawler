@@ -31,5 +31,9 @@ uvicorn[standard]>=0.30,<1
 
 # --- development only; the game runs without these ---
 
-# 496 tests, plus the multi-world soaks behind `-m slow`.
+# 528 tests, plus the multi-world soaks behind `-m slow`.
 pytest>=8,<10
+
+# What FastAPI's TestClient drives the app through. Only the web tests need
+# it, and they skip without it, so this is not required to run the game.
+httpx>=0.27,<1

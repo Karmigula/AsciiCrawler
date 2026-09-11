@@ -12,6 +12,7 @@ is what makes this fit on a free instance.
 
 import asyncio
 import json
+import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -28,6 +29,11 @@ from sim.session import Session
 from web.frame import serialize
 
 STATIC = Path(__file__).parent / "static"
+log = logging.getLogger("asciicrawler")
+
+# How long to wait after a frame fails, growing with consecutive failures
+# so a permanently broken world does not spin a core rendering nothing.
+RETRY_CEILING = 5.0
 
 
 def _env_int(name: str, default: int) -> int:
@@ -119,19 +125,39 @@ def build_payload(session: Session, viewers: int) -> str:
 
 
 async def _run(app: FastAPI) -> None:
-    """Tick and broadcast while anyone is watching; idle otherwise."""
+    """Tick and broadcast while anyone is watching; idle otherwise.
+
+    One loop feeds every viewer, which is the point and also the risk: if it
+    ever raises, the task ends, and nothing restarts it. The aquarium would
+    then sit frozen on its last frame for everybody, with the sockets still
+    open and the health check still cheerfully saying yes.
+
+    So a bad frame costs a frame. The failure is logged, counted, and backed
+    off - a world that is broken rather than unlucky should not spin a core
+    failing sixty times a second - and the loop carries on. Cancellation is
+    the one thing that gets through, because that is the shutdown path.
+    """
     session: Session = app.state.session
     viewers: Viewers = app.state.viewers
     interval = 1.0 / max(1, FPS)
     while True:
         await viewers.awake.wait()
         started = asyncio.get_running_loop().time()
-        # The tick is ordinary blocking Python. It is short, and moving it to
-        # a thread would buy nothing while the GIL is held anyway, so it runs
-        # here and the sleep below absorbs the jitter.
-        session.advance(TICKS_PER_FRAME)
-        payload = build_payload(session, len(viewers))
+        try:
+            # The tick is ordinary blocking Python. It is short, and moving it
+            # to a thread would buy nothing while the GIL is held anyway, so it
+            # runs here and the sleep below absorbs the jitter.
+            session.advance(TICKS_PER_FRAME)
+            payload = build_payload(session, len(viewers))
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            app.state.failures += 1
+            log.exception("frame %s failed", session.agent.tick_count)
+            await asyncio.sleep(min(RETRY_CEILING, 0.25 * app.state.failures))
+            continue
         app.state.latest = payload
+        app.state.frames += 1
         await viewers.broadcast(payload)
         elapsed = asyncio.get_running_loop().time() - started
         await asyncio.sleep(max(0.0, interval - elapsed))
@@ -148,16 +174,18 @@ async def lifespan(app: FastAPI):
         record_hall=os.environ.get("CRAWLER_HALL", "0") == "1",
     )
     app.state.viewers = Viewers()
+    app.state.failures = 0
+    app.state.frames = 0
     # One tick before the first frame is built: the HUD reads "booting" until
     # the creature has stats, and a visitor waking a sleeping instance should
     # not be shown that.
     app.state.session.advance(1)
     app.state.latest = build_payload(app.state.session, 0)
-    runner = asyncio.create_task(_run(app))
+    app.state.runner = asyncio.create_task(_run(app))
     try:
         yield
     finally:
-        runner.cancel()
+        app.state.runner.cancel()
 
 
 app = FastAPI(title="AsciiCrawler", lifespan=lifespan)
@@ -171,16 +199,27 @@ async def index() -> FileResponse:
 
 @app.get("/healthz")
 async def healthz() -> JSONResponse:
-    """Enough for a host's health check, and for me to see it is alive."""
+    """Whether the thing is alive, in the sense a host should care about.
+
+    Answering yes because the web server is up would miss the failure that
+    actually matters: the loop behind it having stopped. If the runner is
+    done, the page is a frozen picture, and a host that restarts on a failed
+    health check should get the chance to.
+    """
     session: Session = app.state.session
+    runner = app.state.runner
+    alive = not runner.done()
     return JSONResponse(
         {
-            "ok": True,
+            "ok": alive,
             "tick": session.agent.tick_count,
             "seed": session.seed,
             "worlds": session.worlds,
             "viewers": len(app.state.viewers),
-        }
+            "frames": app.state.frames,
+            "failures": app.state.failures,
+        },
+        status_code=200 if alive else 503,
     )
 
 

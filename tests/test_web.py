@@ -170,3 +170,104 @@ def test_the_worn_panel_is_optional():
     frame = serialize(session.world, session.agent, session.config, 20, 10)
 
     assert frame["worn"] == []
+
+
+def test_a_bad_frame_costs_a_frame_and_not_the_aquarium():
+    """One loop feeds every viewer, so an exception in it froze everybody.
+
+    The task would end, nothing would restart it, and the page would sit on
+    its last frame with the socket still open and the health check still
+    saying yes. A frame that fails should cost a frame.
+    """
+    import asyncio
+    from types import SimpleNamespace
+
+    pytest.importorskip("fastapi")
+    import web.app as web_app
+
+    class FakeSocket:
+        def __init__(self):
+            self.sent = []
+
+        async def send_text(self, payload):
+            self.sent.append(payload)
+
+    async def scenario():
+        state = SimpleNamespace(
+            session=_session(),
+            viewers=web_app.Viewers(),
+            latest="",
+            failures=0,
+            frames=0,
+        )
+        app = SimpleNamespace(state=state)
+        socket = FakeSocket()
+        await state.viewers.add(socket)
+
+        calls = {"n": 0}
+        real = web_app.build_payload
+
+        def sometimes_broken(session, viewers):
+            calls["n"] += 1
+            if calls["n"] <= 3:
+                raise RuntimeError("a frame went wrong")
+            return real(session, viewers)
+
+        web_app.build_payload = sometimes_broken
+        runner = asyncio.create_task(web_app._run(app))
+        try:
+            for _ in range(120):
+                await asyncio.sleep(0.05)
+                if state.frames >= 2:
+                    break
+        finally:
+            runner.cancel()
+            web_app.build_payload = real
+            try:
+                await runner
+            except asyncio.CancelledError:
+                pass
+        return state, socket, runner
+
+    state, socket, runner = asyncio.run(scenario())
+
+    assert state.failures == 3, f"failures were not counted: {state.failures}"
+    assert state.frames >= 2, "the loop did not recover and keep drawing"
+    assert socket.sent, "viewers got nothing after the failure"
+
+
+def test_the_health_check_fails_when_the_loop_behind_it_has_stopped():
+    """A host that restarts on a failed check should get the chance to.
+
+    Answering yes because the web server is up would miss the failure that
+    actually matters - the loop behind it having stopped - and the page would
+    sit frozen while everything reported healthy.
+    """
+    import asyncio
+
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")  # what TestClient drives the app through
+    from fastapi.testclient import TestClient
+
+    from web.app import app
+
+    with TestClient(app) as client:
+        assert client.get("/healthz").status_code == 200, "should start healthy"
+
+        # A finished stand-in for the runner. Cancelling the real task from
+        # here would mean reaching into the test client's event loop from
+        # another one; `done()` is all the endpoint asks about.
+        spare = asyncio.new_event_loop()
+        try:
+            finished = spare.create_future()
+            finished.set_result(None)
+            running, app.state.runner = app.state.runner, finished
+            try:
+                answer = client.get("/healthz")
+            finally:
+                app.state.runner = running
+        finally:
+            spare.close()
+
+    assert answer.status_code == 503
+    assert answer.json()["ok"] is False

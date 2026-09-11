@@ -29,6 +29,13 @@ built by the same code the desktop window uses, which is now `render/frame.py`
 — pulled out of `main.py` so that a headless server can build a picture
 without pygame anywhere in the process.
 
+A frame that fails now costs a frame rather than the aquarium. One loop feeds
+every viewer, so an exception in it ended the task and left everybody looking
+at a frozen picture - with the sockets still open and the health check still
+saying yes. Failures are logged, counted and backed off, and `/healthz`
+answers 503 when the loop behind it has stopped, so a host that restarts on a
+failed check gets the chance to.
+
 The hosted version rolls a fresh world when the creature dies. On the desktop
 the default is to stay put, so the next life can walk back for its own gear;
 watching a stream, a death is the end of a story and the interesting thing is
