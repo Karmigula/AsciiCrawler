@@ -22,16 +22,23 @@
     <pre id="hud"></pre>
     <pre id="worn"></pre>
     <pre id="log"></pre>
-    <p class="foot">
-      <button id="open-hall" type="button">hall of fame <kbd>h</kbd></button>
-    </p>
+
   </aside>
 </main>
 
 <p class="corner">
   <span id="viewers"></span>
+  <button id="open-hall" type="button">hall of fame <kbd>h</kbd></button>
+  <button id="open-legend" type="button">symbols <kbd>j</kbd></button>
   <a href="https://github.com/Karmigula/AsciiCrawler">source</a>
 </p>
+
+<div id="legend" class="overlay" hidden>
+  <div class="sheet" role="dialog" aria-label="What the symbols mean">
+    <h2>what everything is</h2>
+    <div class="scroll"><div id="legend-body" class="legend"></div></div>
+  </div>
+</div>
 
 <div id="hall" class="overlay" hidden>
   <div class="sheet" role="dialog" aria-label="Hall of fame">

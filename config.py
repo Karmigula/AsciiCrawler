@@ -181,6 +181,13 @@ class Config:
     # stops short of were never going to win - and waiting for all of them
     # meant one unreachable candidate cost a full-cap sweep every time.
     plan_settle_target: int = 12
+    # How far to look past a frontier tile to see what it opens onto, and how
+    # much that counts next to the tiles immediately beyond it.
+    frontier_lookahead: int = 4
+    w_frontier_reach: float = 0.2
+    # Distance counts against a target less than linearly, so new ground is
+    # worth walking to rather than always losing to whatever is closest.
+    explore_distance_falloff: float = 0.85
     explore_hysteresis_bonus: float = 0.1
     explore_noise: float = 0.02
 

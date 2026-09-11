@@ -26,6 +26,8 @@ const viewerBox = canvas && document.getElementById("viewers");
 const hallBox = canvas && document.getElementById("hall");
 const hallTable = canvas && document.getElementById("hall-table");
 const hallNote = canvas && document.getElementById("hall-note");
+const legendBox = canvas && document.getElementById("legend");
+const legendBody = canvas && document.getElementById("legend-body");
 
 let latest = null;
 let socket = null;
@@ -194,6 +196,43 @@ function closeHall() {
   hallBox.hidden = true;
 }
 
+// --- what everything on screen actually is ---
+
+let legendLoaded = false;
+
+async function openLegend() {
+  legendBox.hidden = false;
+  if (legendLoaded) return;
+  try {
+    const answer = await fetch("/api/legend");
+    const payload = await answer.json();
+    legendBody.replaceChildren();
+    for (const section of payload.sections) {
+      const heading = document.createElement("h3");
+      heading.textContent = section.heading;
+      legendBody.append(heading);
+      for (const row of section.rows) {
+        const line = document.createElement("div");
+        line.className = "row";
+        const glyph = document.createElement("b");
+        glyph.textContent = row.glyph;
+        glyph.style.color = row.color;
+        const text = document.createElement("span");
+        text.textContent = row.text;
+        line.append(glyph, text);
+        legendBody.append(line);
+      }
+    }
+    legendLoaded = true;  // it cannot change while the server is up
+  } catch (whatever) {
+    legendBody.textContent = "could not fetch the legend just now.";
+  }
+}
+
+function closeLegend() {
+  legendBox.hidden = true;
+}
+
 function connect() {
   const scheme = location.protocol === "https:" ? "wss" : "ws";
   socket = new WebSocket(`${scheme}://${location.host}/ws`);
@@ -229,17 +268,27 @@ function connect() {
 
 if (canvas) {
   document.getElementById("open-hall").addEventListener("click", openHall);
-  hallBox.addEventListener("click", (event) => {
-    if (event.target === hallBox) closeHall();  // clicking the dark closes it
-  });
+  document.getElementById("open-legend").addEventListener("click", openLegend);
+  for (const [box, shut] of [[hallBox, closeHall], [legendBox, closeLegend]]) {
+    box.addEventListener("click", (event) => {
+      if (event.target === box) shut();  // clicking the dark closes it
+    });
+  }
   window.addEventListener("keydown", (event) => {
     if (event.metaKey || event.ctrlKey || event.altKey) return;
     const key = event.key.toLowerCase();
     if (key === "h") {
       event.preventDefault();
+      // One sheet at a time: opening either puts the other away.
+      closeLegend();
       hallBox.hidden ? openHall() : closeHall();
+    } else if (key === "j") {
+      event.preventDefault();
+      closeHall();
+      legendBox.hidden ? openLegend() : closeLegend();
     } else if (key === "escape") {
       closeHall();
+      closeLegend();
     }
   });
 

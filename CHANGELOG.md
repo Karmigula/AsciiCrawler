@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### A cheat sheet, so you can tell what you are looking at
+
+<kbd>j</kbd> opens it, in the window and in the browser. One table, built from
+the same registries the game draws from, so a glyph that exists and is missing
+from the sheet is a test failure rather than something nobody notices.
+
+The hall of fame and the symbol sheet are both reachable from the bottom-left
+corner now, next to who is watching and where the source is.
+
+### It goes looking further afield
+
+Exploring scored a frontier tile by the unknown tiles touching it, which
+cannot tell the mouth of an unexplored region from a dent in a wall: both
+show three unknown neighbours. It looks further past a candidate now, and
+distance counts against a target less than linearly - so somewhere genuinely
+new is worth walking to rather than always losing to whatever is closest.
+
+Over eight worlds that is 511 tiles from spawn against 415, and more kills
+along the way (539 against 471) rather than fewer.
+
 ### The hall keeps twenty
 
 Up from twelve, and the overlay is wide enough to show the whole table -

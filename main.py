@@ -16,6 +16,7 @@ Controls
     1 2 3      speed 1x / 4x / 16x
     F1..F5     overlays: fov, memory age, threat, plan, frontier
     b          show what is in the bag
+    j          what every symbol means
     h          toggle the HUD
     F10        borderless window
     F11        borderless fullscreen
@@ -58,6 +59,7 @@ from render.menu import (
     stored_values,
 )
 from sim import hall
+from render.legend import legend_lines
 from render.overlays import OVERLAY_NAMES
 from render.screen import Screen
 from sim.session import should_restart
@@ -106,11 +108,29 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
     soaking = False
     in_hall = False
     hall_entries = hall.load()
+    in_legend = False
     deaths_seen = 0
 
     while running:
         dt = clock.tick(config.max_fps) / 1000.0
         accumulator = min(accumulator + dt, config.max_frame_seconds)
+
+        if in_legend:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.VIDEORESIZE:
+                    screen.resize(event.size)
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_F11:
+                        screen.toggle_fullscreen()
+                    elif event.key == pygame.K_F10:
+                        screen.toggle_borderless()
+                    elif event.key in (pygame.K_j, pygame.K_ESCAPE):
+                        in_legend = False
+            screen.draw_centered(legend_lines(config), big_lines=5)
+            screen.present()
+            continue
 
         if in_hall:
             for event in pygame.event.get():
@@ -217,6 +237,8 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
                         selected = move_selection(selected, -1)
                     elif event.key in (pygame.K_DOWN, pygame.K_s):
                         selected = move_selection(selected, 1)
+                    elif event.key == pygame.K_j:
+                        in_legend = True
                     elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
                         choice = ENTRIES[selected][0]
                         if choice == "quit":
@@ -267,6 +289,8 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
                     overlay = None if overlay == chosen else chosen
                 elif event.key == pygame.K_h:
                     show_hud = not show_hud
+                elif event.key == pygame.K_j:
+                    in_legend = True
                 elif event.key == pygame.K_b:
                     show_bag = not show_bag
                 elif event.key == pygame.K_n:

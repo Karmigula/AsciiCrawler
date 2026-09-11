@@ -545,3 +545,24 @@ def test_the_hall_is_served_for_the_overlay_to_show():
     assert "kept" in body, "the page needs to know whether these lives persist"
     for life in body["lives"]:
         assert {"name", "level", "kills", "depth", "score"} <= set(life)
+
+
+def test_the_legend_is_served_for_the_overlay():
+    """The browser has no window title bar to hide a key map in."""
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+
+    from web.app import app
+
+    with TestClient(app) as client:
+        answer = client.get("/api/legend")
+
+    assert answer.status_code == 200
+    sections = answer.json()["sections"]
+    assert sections, "the sheet came back empty"
+    glyphs = {row["glyph"] for section in sections for row in section["rows"]}
+    assert {"@", "#", "&", "$"} <= glyphs, "the basics are missing"
+    for section in sections:
+        for row in section["rows"]:
+            assert row["color"].startswith("#"), row

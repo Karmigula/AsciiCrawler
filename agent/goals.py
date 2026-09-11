@@ -59,6 +59,23 @@ def info_gain(memory: Memory, coord: Position) -> int:
     return sum(1 for dx, dy in DIRS_8 if (x + dx, y + dy) not in memory)
 
 
+def opens_onto(memory: Memory, coord: Position, radius: int) -> int:
+    """Unknown tiles within `radius` - how much *world* is behind this one.
+
+    `info_gain` looks one tile out, which cannot tell the mouth of an
+    unexplored region from a dent in a wall the agent has already walked: both
+    show three unknown neighbours. Looking further sees the difference, and
+    the difference is the whole question of where to go next.
+    """
+    x, y = coord
+    return sum(
+        1
+        for dy in range(-radius, radius + 1)
+        for dx in range(-radius, radius + 1)
+        if (dx or dy) and (x + dx, y + dy) not in memory
+    )
+
+
 @dataclass
 class ExploreGoal:
     """Stateful EXPLORE: incumbent target, current path, decision bookkeeping."""
@@ -132,7 +149,14 @@ class ExploreGoal:
             path_cost = cost.get(cand)
             if path_cost is None:
                 continue
-            score = config.w_explore * info_gain(memory, cand) / (1.0 + path_cost)
+            prize = info_gain(memory, cand) + config.w_frontier_reach * opens_onto(
+                memory, cand, config.frontier_lookahead
+            )
+            # Distance still counts against a candidate, but less than
+            # linearly: at an exponent of one the agent takes whatever is
+            # nearest and works outward a tile at a time, which reads as
+            # pottering. Below one, somewhere genuinely new is worth the walk.
+            score = config.w_explore * prize / (1.0 + path_cost) ** config.explore_distance_falloff
             score -= config.w_threat * danger(memory, cand, config)
             if cand == self.target:
                 score += config.explore_hysteresis_bonus

@@ -199,3 +199,26 @@ kbd {
 #hall-table th.left,
 #hall-table td.left { text-align: left; }
 #hall-table tr:first-child td { color: #d7b464; }
+
+
+/* The legend reads as columns of glyph-and-meaning, as many across as fit. */
+.legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: 0.15rem 1.4rem;
+  font-size: 0.82rem;
+}
+
+.legend h3 {
+  grid-column: 1 / -1;
+  margin: 0.7rem 0 0.2rem;
+  color: var(--dim);
+  font-size: 0.72rem;
+  font-weight: normal;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.legend .row { display: flex; gap: 0.7rem; align-items: baseline; }
+.legend .row b { width: 1ch; font-weight: normal; }
+.legend .row span { color: var(--ink); }

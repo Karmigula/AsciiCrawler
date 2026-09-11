@@ -376,6 +376,31 @@ async def hall_of_fame() -> JSONResponse:
     )
 
 
+@app.get("/api/legend")
+async def legend() -> JSONResponse:
+    """What every symbol means, from the same table the desktop reads.
+
+    Static for the life of the process, and small, so it is fetched when
+    somebody opens the sheet rather than shipped with every frame.
+    """
+    from render.legend import legend_sections
+
+    return JSONResponse(
+        {
+            "sections": [
+                {
+                    "heading": heading,
+                    "rows": [
+                        {"glyph": glyph, "text": text, "color": "#%02x%02x%02x" % colour}
+                        for glyph, text, colour in rows
+                    ],
+                }
+                for heading, rows in legend_sections(DEFAULT_CONFIG)
+            ]
+        }
+    )
+
+
 @app.websocket("/ws")
 async def stream(socket: WebSocket) -> None:
     await socket.accept()

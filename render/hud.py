@@ -282,8 +282,8 @@ def help_lines(config) -> list[Line]:
         ("F1 fov  F2 age  F3 threat", config.hud_dim_color),
         ("F4 plan F5 frontier", config.hud_dim_color),
         ("n new world   p screenshot", config.hud_dim_color),
-        ("b bag   F10/F11 window", config.hud_dim_color),
-        ("esc menu", config.hud_dim_color),
+        ("b bag   j symbols", config.hud_dim_color),
+        ("F10/F11 window   esc menu", config.hud_dim_color),
     ]
 
 
