@@ -317,6 +317,18 @@ class Screen:
             surface = self._hud_font.render(text, True, color)
             self._window.blit(surface, (x + 8, y + 6 + index * config.hud_line_height))
 
+    def centered_capacity(self, big_lines: int = 0, reserved: int = 0) -> int:
+        """How many ordinary lines `draw_centered` can show without spilling.
+
+        It centres what it is given and starts at the top edge when that is
+        too tall, so anything past the bottom is simply not on the screen.
+        Callers with a list that grows - the hall of fame - ask first.
+        """
+        config = self._config
+        title = big_lines * (config.hud_line_height + config.menu_title_font_size // 2)
+        room = (self._height - title) // max(1, config.hud_line_height)
+        return max(1, room - reserved)
+
     def draw_centered(self, lines, big_lines: int = 0) -> None:
         """Clear the window and draw lines centred in it, top down.
 

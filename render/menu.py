@@ -335,7 +335,7 @@ def _hall_row(cells) -> str:
     return "  ".join(parts)
 
 
-def hall_lines(entries, config) -> list[Line]:
+def hall_lines(entries, config, limit: int | None = None) -> list[Line]:
     """The hall of fame, best run first.
 
     Ranked by score rather than any single number, so the columns show what
@@ -344,9 +344,10 @@ def hall_lines(entries, config) -> list[Line]:
     """
     from sim.hall import score
 
+    shown = entries if limit is None else entries[:limit]
     lines: list[Line] = [(row, config.menu_title_color) for row in block_text("HALL")]
     lines.append(("", config.menu_dim_color))
-    if not entries:
+    if not shown:
         lines.append(("nothing has died down there yet", config.menu_dim_color))
         lines.append(("", config.menu_dim_color))
         lines.append(("esc back", config.menu_dim_color))
@@ -355,7 +356,7 @@ def hall_lines(entries, config) -> list[Line]:
     lines.append(
         (_hall_row([heading for heading, _, _ in HALL_COLUMNS]), config.menu_dim_color)
     )
-    for place, entry in enumerate(entries, start=1):
+    for place, entry in enumerate(shown, start=1):
         colour = config.menu_pick_color if place == 1 else config.menu_text_color
         lines.append(
             (

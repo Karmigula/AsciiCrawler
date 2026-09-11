@@ -242,3 +242,51 @@ def test_an_explicit_path_still_wins():
         import web.app
 
         importlib.reload(web.app)
+
+
+def test_the_hall_keeps_twenty_runs(tmp_path):
+    """Twelve was a screenful on the desktop; the web overlay scrolls."""
+    from sim import hall
+    from sim.hall import Fallen
+
+    where = tmp_path / "hall_of_fame.json"
+    for number in range(40):
+        hall.remember(
+            Fallen(
+                seed=number, level=number, kills=number, depth=number * 10,
+                ticks=100, killer="a rat", archetype="scout", name=f"Number {number}",
+            ),
+            where,
+        )
+
+    kept = hall.load(where)
+
+    assert len(kept) == 20, f"kept {len(kept)} runs"
+    assert kept[0].name == "Number 39", "the best run should be first"
+    assert all(
+        hall.score(a) >= hall.score(b) for a, b in zip(kept, kept[1:])
+    ), "the hall is not in order"
+
+
+def test_the_hall_keeps_twenty_runs(tmp_path):
+    """Twelve was a screenful on the desktop; the web overlay scrolls."""
+    from sim import hall
+    from sim.hall import Fallen
+
+    where = tmp_path / "hall_of_fame.json"
+    for number in range(40):
+        hall.remember(
+            Fallen(
+                seed=number, level=number, kills=number, depth=number * 10,
+                ticks=100, killer="a rat", archetype="scout", name=f"Number {number}",
+            ),
+            where,
+        )
+
+    kept = hall.load(where)
+
+    assert len(kept) == 20, f"kept {len(kept)} runs"
+    assert kept[0].name == "Number 39", "the best run should be first"
+    assert all(
+        hall.score(a) >= hall.score(b) for a, b in zip(kept, kept[1:])
+    ), "the hall is not in order"

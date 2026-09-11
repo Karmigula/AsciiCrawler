@@ -16,7 +16,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 DEFAULT_PATH = Path(__file__).resolve().parent.parent / "hall_of_fame.json"
-LIMIT = 12
+LIMIT = 20
 
 
 @dataclass(frozen=True)

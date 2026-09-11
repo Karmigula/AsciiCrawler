@@ -45,11 +45,19 @@ def test_depth_counts_for_more_than_a_level():
 
 
 def test_the_hall_is_capped(hall_file):
-    for i in range(30):
+    """However many die, only the best survive - `LIMIT` of them.
+
+    The number is read from the module rather than written in here: what this
+    is protecting is that the cap holds and keeps the right end of the list,
+    not that it happens to be twenty today.
+    """
+    from sim.hall import LIMIT
+
+    for i in range(LIMIT + 18):
         remember(life(level=i, depth=i * 10), hall_file)
     stored = load(hall_file)
-    assert len(stored) == 12
-    assert stored[0].level == 29, "and it keeps the best, not the newest"
+    assert len(stored) == LIMIT
+    assert stored[0].level == LIMIT + 17, "and it keeps the best, not the newest"
 
 
 def test_a_missing_hall_is_an_empty_one(tmp_path):

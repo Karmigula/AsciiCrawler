@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### The hall keeps twenty
+
+Up from twelve, and the overlay is wide enough to show the whole table -
+who killed them and what the run scored were off the right-hand edge, with
+nothing to say they were there. It is as tall as the runs in it, growing from
+the middle of the window and scrolling once it reaches three quarters of it.
+
+The desktop asks how many rows the window can fit before drawing, because
+that screen does not clip: anything past the bottom edge was simply not
+drawn.
+
 ### Visitors can see the hall of fame
 
 Press <kbd>h</kbd> on the site to open it and <kbd>h</kbd> again to shut it, or click **hall of fame**. The dead are

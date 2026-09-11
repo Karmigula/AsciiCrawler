@@ -150,8 +150,15 @@ kbd {
 .sheet {
   display: flex;
   flex-direction: column;
-  width: min(46rem, 100%);
-  max-height: min(34rem, 88vh);
+  /* Wide enough for the whole table. A build can name four synergies, so the
+     right-hand columns - who killed them, what it scored - were off the edge
+     with nothing to say they were there. */
+  width: min(72rem, 100%);
+  /* No fixed height: the sheet is as tall as the runs in it. Centred in the
+     overlay, so it grows up and down from the middle as the dead accumulate,
+     and scrolls once it reaches three quarters of the window - past that it
+     stops reading as a panel over the game and starts reading as the page. */
+  max-height: 75vh;
   padding: 1rem 1.1rem;
   background: var(--panel);
   border: 1px solid var(--edge);
@@ -175,6 +182,8 @@ kbd {
   font-size: 0.82rem;
   white-space: nowrap;
 }
+/* The table may be wider than the sheet on a narrow window; the scroll box
+   around it already takes care of that in both directions. */
 #hall-table th {
   position: sticky;
   top: 0;

@@ -125,7 +125,12 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
                         screen.toggle_borderless()
                     elif event.key == pygame.K_ESCAPE:
                         in_hall = False
-            screen.draw_centered(hall_lines(hall_entries, config), big_lines=5)
+            # Four lines of chrome around the table: a blank, the column
+            # headings, another blank and the way out.
+            room = screen.centered_capacity(big_lines=5, reserved=4)
+            screen.draw_centered(
+                hall_lines(hall_entries, config, limit=room), big_lines=5
+            )
             screen.present()
             continue
 

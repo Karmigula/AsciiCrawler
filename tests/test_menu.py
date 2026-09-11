@@ -129,3 +129,57 @@ def test_the_alphabet_covers_letters_and_digits():
         assert letter in _LETTERS, f"no block letter for {letter!r}"
         assert len(_LETTERS[letter]) == 5, letter
         assert all(len(row) == 5 for row in _LETTERS[letter]), letter
+
+
+def test_the_desktop_hall_shows_only_as_many_runs_as_the_window_fits():
+    """`draw_centered` does not clip: anything past the bottom is just gone.
+
+    The hall keeps twenty now, which fits a default window and does not fit a
+    short one, so the screen asks for a number rather than handing over the
+    whole list and hoping.
+    """
+    from config import DEFAULT_CONFIG
+    from render.menu import hall_lines
+    from sim.hall import Fallen
+
+    runs = [
+        Fallen(
+            seed=n, level=5, kills=9, depth=100, ticks=800,
+            killer="a rat", archetype="scout", name=f"Someone {n}",
+        )
+        for n in range(20)
+    ]
+
+    full = hall_lines(runs, DEFAULT_CONFIG, limit=20)
+    cramped = hall_lines(runs, DEFAULT_CONFIG, limit=5)
+
+    assert len(cramped) < len(full)
+    assert sum("Someone" in text for text, _ in cramped) == 5
+    assert sum("Someone" in text for text, _ in full) == 20
+
+
+def test_the_desktop_hall_shows_only_as_many_runs_as_the_window_fits():
+    """`draw_centered` does not clip: anything past the bottom is just gone.
+
+    The hall keeps twenty now, which suits a default window and does not suit
+    a short one, so the screen asks how many will fit rather than handing over
+    the whole list and hoping.
+    """
+    from config import DEFAULT_CONFIG
+    from render.menu import hall_lines
+    from sim.hall import Fallen
+
+    runs = [
+        Fallen(
+            seed=n, level=5, kills=9, depth=100, ticks=800,
+            killer="a rat", archetype="scout", name=f"Someone {n}",
+        )
+        for n in range(20)
+    ]
+
+    full = hall_lines(runs, DEFAULT_CONFIG, limit=20)
+    cramped = hall_lines(runs, DEFAULT_CONFIG, limit=5)
+
+    assert len(cramped) < len(full)
+    assert sum("Someone" in text for text, _ in cramped) == 5
+    assert sum("Someone" in text for text, _ in full) == 20
