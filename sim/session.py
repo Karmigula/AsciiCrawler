@@ -45,6 +45,13 @@ class Session:
     ) -> None:
         self.config = config
         self.seed = config.world_seed if seed is None else seed
+        # Worlds after the first are drawn from a stream of their own, seeded
+        # by the first. Walking seed + 1 gave neighbouring worlds - and, on a
+        # host that restarts often, the same short procession of them every
+        # time. Drawing keeps a pinned starting seed reproducible all the way
+        # down, which counting did too and randomness alone would not.
+        self._rolls = random.Random(self.seed ^ 0x5EED_5EED)
+        self._seen: set[int] = {self.seed}
         self.max_ticks = max_ticks
         self.record_hall = record_hall
         self.worlds = 0
@@ -64,7 +71,15 @@ class Session:
         self.worlds += 1
 
     def _next_world(self) -> None:
-        self.seed += 1
+        """Move to a world this session has not been to before."""
+        for _ in range(64):
+            candidate = self._rolls.randrange(1, 1 << 31)
+            if candidate not in self._seen:
+                break
+        else:  # pragma: no cover - 64 collisions in a 2-billion space
+            candidate = max(self._seen) + 1
+        self._seen.add(candidate)
+        self.seed = candidate
         self._start()
 
     def advance(self, steps: int = 1) -> None:

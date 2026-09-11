@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### The same creature kept turning up
+
+Not the name generator - it makes a thousand distinct names in a thousand
+tries. The hosted version opened on a fixed seed and then walked seed + 1 per
+death, so every restart replayed the same procession of worlds, and a free
+instance that sleeps between visitors restarts constantly. Anyone dropping in
+kept meeting the third creature of that sequence by name.
+
+The instance now opens on a world nobody has seen and logs which, and each
+death draws a world this session has not visited rather than the one next
+door. `CRAWLER_SEED` still pins it, and pinning reproduces the whole
+procession, not just the first world - the later ones are drawn from a stream
+seeded by the first.
+
 ### Fixed after review
 
 - **Three menu screens had holes in their titles.** The block alphabet only

@@ -24,6 +24,11 @@ services:
       # so a world that runs for a month is a slow leak.
       - key: CRAWLER_WORLD_TICKS
         value: "40000"
+      # No CRAWLER_SEED here on purpose: without one the instance opens on a
+      # world nobody has seen, and logs which. A free instance sleeps and
+      # restarts often, and a fixed seed would replay the same few dungeons -
+      # and the same few creatures, by name - to everyone who dropped in.
+      #
       # A death ends the story; the next one should start somewhere new.
       - key: CRAWLER_NEW_WORLD_ON_DEATH
         value: "1"

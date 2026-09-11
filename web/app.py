@@ -14,6 +14,7 @@ import asyncio
 import json
 import logging
 import os
+import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -41,6 +42,28 @@ RETRY_CEILING = 5.0
 # everybody's problem: the loop could not tick again until the slowest socket
 # finished, so one dead connection froze the shared world.
 SEND_TIMEOUT = 2.0
+
+
+def starting_seed() -> int:
+    """Which world to open on: the one asked for, or one nobody has seen.
+
+    A fixed default made every boot replay the same dungeons in the same
+    order, which on a host that sleeps between visitors is not a quirk but the
+    main thing you see. The instance wakes, starts at 4242, and the third
+    creature it names is the one a returning viewer keeps meeting - the same
+    name, over and over, in a game with fifty thousand of them.
+
+    `CRAWLER_SEED` still pins it, because reproducing a world is worth
+    keeping. Without it the seed is random per boot and logged, so a world
+    that turns out to be worth watching can be asked for again.
+    """
+    asked = os.environ.get("CRAWLER_SEED")
+    if asked is not None:
+        try:
+            return int(asked)
+        except ValueError:
+            log.warning("CRAWLER_SEED=%r is not a number; rolling one", asked)
+    return secrets.randbelow(1 << 31)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -196,11 +219,36 @@ async def _run(app: FastAPI) -> None:
         await asyncio.sleep(max(0.0, interval - elapsed))
 
 
+def _speak_through_uvicorn() -> None:
+    """Borrow the server's log handlers, so our own lines are not swallowed.
+
+    Uvicorn configures its loggers and leaves the root one bare, so a plain
+    `getLogger(...)` writes into nothing. The starting seed is the one thing
+    here worth being able to find afterwards - it is how a world that turned
+    out to be worth watching gets asked for again - and it was going
+    precisely nowhere.
+    """
+    if log.handlers:
+        return
+    # The handler is not on "uvicorn.error" - that one propagates, and the
+    # handler sits on its parent - so walk up until something can actually
+    # write. Checking only the first name is how this silently did nothing.
+    for name in ("uvicorn.error", "uvicorn", "root"):
+        server = logging.getLogger() if name == "root" else logging.getLogger(name)
+        if server.handlers:
+            log.handlers = server.handlers
+            log.setLevel(logging.INFO)
+            return
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _speak_through_uvicorn()
+    seed = starting_seed()
+    log.info("opening on world seed %s", seed)
     app.state.session = Session(
         replace(DEFAULT_CONFIG, new_world_on_death=NEW_WORLD_ON_DEATH),
-        seed=_env_int("CRAWLER_SEED", DEFAULT_CONFIG.world_seed),
+        seed=seed,
         max_ticks=WORLD_TICKS,
         # A free host's disk is wiped on every deploy, so a hall of fame kept
         # there is a file that quietly lies about being permanent.

@@ -368,3 +368,109 @@ def test_the_backoff_grows_with_consecutive_failures_not_lifetime_ones():
 
     assert state.failures == 2, "the lifetime count is what /healthz reports"
     assert state.failing == 0, "a good frame ends the run of bad ones"
+
+
+def test_each_boot_opens_on_a_different_world():
+    """A fixed starting seed replayed the same dungeons on every restart.
+
+    On a host that sleeps between visitors that is not a quirk, it is the main
+    thing anybody sees: the instance wakes, starts where it always starts, and
+    a returning viewer meets the same creature by name again and again.
+    """
+    import os
+
+    pytest.importorskip("fastapi")
+    from web.app import starting_seed
+
+    was = os.environ.pop("CRAWLER_SEED", None)
+    try:
+        seeds = {starting_seed() for _ in range(20)}
+    finally:
+        if was is not None:
+            os.environ["CRAWLER_SEED"] = was
+
+    assert len(seeds) > 15, f"boots are not rolling their own world: {seeds}"
+
+
+def test_a_world_can_still_be_asked_for_by_name():
+    """Reproducing one is worth keeping; that is the whole point of seeds."""
+    import os
+
+    pytest.importorskip("fastapi")
+    from web.app import starting_seed
+
+    was = os.environ.get("CRAWLER_SEED")
+    os.environ["CRAWLER_SEED"] = "4242"
+    try:
+        assert [starting_seed() for _ in range(3)] == [4242, 4242, 4242]
+    finally:
+        if was is None:
+            os.environ.pop("CRAWLER_SEED", None)
+        else:
+            os.environ["CRAWLER_SEED"] = was
+
+
+def test_a_nonsense_seed_rolls_one_rather_than_refusing_to_start():
+    import os
+
+    pytest.importorskip("fastapi")
+    from web.app import starting_seed
+
+    was = os.environ.get("CRAWLER_SEED")
+    os.environ["CRAWLER_SEED"] = "the frozen deep"
+    try:
+        assert starting_seed() != starting_seed()
+    finally:
+        if was is None:
+            os.environ.pop("CRAWLER_SEED", None)
+        else:
+            os.environ["CRAWLER_SEED"] = was
+
+
+def test_every_death_moves_to_a_world_this_session_has_not_seen():
+    """A death should open somewhere new, not next door.
+
+    Worlds used to be seed + 1, so a run was a walk through neighbouring
+    dungeons; combined with a fixed start that meant the same short procession
+    of them, and the same creatures by name, on every restart.
+    """
+    session = _session(seed=4242, max_ticks=25)
+    seeds = [session.seed]
+    for _ in range(40):
+        session._next_world()
+        seeds.append(session.seed)
+
+    assert len(set(seeds)) == len(seeds), "a world came round twice"
+    assert all(abs(b - a) > 1 for a, b in zip(seeds, seeds[1:])), (
+        "worlds are still neighbours"
+    )
+
+
+def test_a_pinned_seed_reproduces_the_whole_procession():
+    """Randomness per death must not cost reproducibility.
+
+    The worlds after the first are drawn from a stream seeded by the first, so
+    naming one world names all of them - which is what makes a report like
+    "the third world on seed 4242" mean anything.
+    """
+    def walk():
+        session = _session(seed=4242)
+        seen = [session.seed]
+        for _ in range(6):
+            session._next_world()
+            seen.append(session.seed)
+        return seen
+
+    assert walk() == walk()
+
+
+def test_different_starting_worlds_lead_somewhere_different():
+    def walk(seed):
+        session = _session(seed=seed)
+        seen = []
+        for _ in range(6):
+            session._next_world()
+            seen.append(session.seed)
+        return set(seen)
+
+    assert not (walk(11) & walk(12)), "two boots visited the same worlds"
