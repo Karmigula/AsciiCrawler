@@ -1,8 +1,27 @@
 # AsciiCrawler
 
+<img width="1200" height="800" alt="python_VcqODqjmTa" src="https://github.com/user-attachments/assets/4d29afb0-988c-42fb-be9f-99d22ab79f33" />
+
 An autonomous `@` in an infinite dungeon. Nobody plays it — you watch it.
 
-<img width="1200" height="800" alt="python_n9lhxMAZDv" src="https://github.com/user-attachments/assets/e9e3504d-daf6-4c2f-ac8c-42bbd1a23f97" />
+<p align="center">
+  <img
+    src="https://github.com/user-attachments/assets/8e22c367-9cfb-42b9-b587-3b9f5925ca92"
+    alt="python_fL1osL5W0s"
+    width="300"
+  />
+  <img
+    src="https://github.com/user-attachments/assets/b3dedea0-dc12-43a3-9091-654e888bc65f"
+    alt="python_ZeWT4r0yxu"
+    width="300"
+  />
+  <img
+    src="https://github.com/user-attachments/assets/7f9a9230-4354-4cbf-8897-52da54205d1c"
+    alt="python_KwdibDfjnu"
+    width="300"
+  />
+</p>
+
 
 The agent explores, fights, flees, loots, levels, dies, and starts again. It
 runs on beliefs rather than facts: it acts on what it remembers seeing, which
