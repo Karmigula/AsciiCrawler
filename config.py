@@ -243,6 +243,40 @@ class Config:
     # out of its way for one; above it, they are barely worth the walk.
     # How much a totem is worth walking to. It is a gamble the agent cannot
     # see the odds of, so this is curiosity rather than expected value.
+    # Stalls. Rarer than totems: finding one should be worth the walk, and
+    # a shop on every other street corner makes gold a tap rather than a
+    # purse. `shop_glyph` is on the cheat sheet.
+    shop_chance: float = 0.18
+    shop_free_radius: int = 2
+    shop_color: tuple[int, int, int] = (240, 206, 120)
+    w_shop: float = 1.1  # how much a remembered stall is worth walking to
+    shop_interest_gold: int = 40
+    # What a pile of gold is worth, and how fast that grows with distance.
+    # What a stall keeps on the shelf besides gear, and what a potion is worth
+    # in the same units the loadout scorer uses.
+    # Secret rooms: how often a chunk hides one, how close the agent has to
+    # be to have a chance of noticing, and that chance per tick. Finding one
+    # should feel like luck rather than like a chore with a timer on it.
+    secret_chance: float = 0.22
+    secret_notice_radius: int = 6
+    secret_notice_chance: float = 0.09
+    secret_hoard_items: int = 4
+    secret_ambush_monsters: int = 3
+    secret_gate_distance: int = 90
+
+    shop_quality: float = 0.6  # how much better a stall's stock is than the floor
+    shop_potion_chance: float = 0.7
+    shop_potion_price: int = 10
+    v_potion: float = 3.0
+    # What a spell is worth to the loadout scorer, and how much less the next
+    # one is worth: they share a mana pool and their cooldowns overlap.
+    v_spell: float = 3.0
+    v_spell_falloff: float = 0.45
+    v_max_mp: float = 0.04
+    gold_pile_min: int = 4
+    gold_pile_max: int = 14
+    gold_depth_scale: int = 300  # a full purse, as far as wanting a shop goes
+
     w_shrine: float = 1.3
     potion_reserve: int = 3
     w_potion: float = 1.0
@@ -254,7 +288,11 @@ class Config:
     # away. Wanting one badly is not the same as being able to afford the
     # walk. Left as a knob because it is worth being able to try again.
     w_potion_hurt: float = 0.0
-    w_gold: float = 0.2  # nothing sells anything, so gold is a souvenir
+    # Gold buys things now, and it is still barely worth stooping for. Raising
+    # it to 0.45 sent the creature chasing coins into rooms it had no business
+    # in: fifteen deaths against one over nine thousand ticks. The value of
+    # gold is in the stall it gets spent at, and the stall is priced above.
+    w_gold: float = 0.2
     potion_heal: int = 12
     potion_at_hp_fraction: float = 0.45  # drink when this hurt, not before
     w_loot: float = 1.4  # how loud a remembered item calls

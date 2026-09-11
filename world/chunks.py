@@ -56,6 +56,7 @@ from world import (
     gen_maze,
     gen_ruins,
     gen_scatter,
+    secrets,
     gen_station,
 )
 from world.biomes import biome_at, throne_chunk
@@ -76,6 +77,7 @@ Position = tuple[int, int]
 _MASK64 = (1 << 64) - 1
 _NOISE_SALT = 0xC0FFEE  # keeps distance-noise hashes distinct from other uses
 _RESPAWN_SALT = 0xBADCAFE  # respawn rolls get their own stream too
+_SECRET_SALT = 0x5EC4E7  # and so do the sealed chambers
 _POPULATE_SALT = 0x5EED11FE  # populate rolls from a stream of their own, so
 # adding or retuning spawns can never shift a single tile of generated terrain
 
@@ -138,6 +140,7 @@ class ChunkStore:
             # the agent can see it.
             biome = self.biome_of(cx, cy)
             tiles = _generate_chunk(self.seed, cx, cy, self._config, biome)
+            secret = _hide_a_room(tiles, self.seed, cx, cy, self._config)
             contents = populate(
                 random.Random(_hash_ints(self.seed, cx, cy, _POPULATE_SALT) % (1 << 63)),
                 tiles,
@@ -148,6 +151,7 @@ class ChunkStore:
                 biome=biome,
                 throne=throne_chunk(self.seed, cx, cy, self._config),
             )
+            contents.secret = secret
             chunk = Chunk(cx, cy, tiles, contents)
             self._chunks[key] = chunk
         return chunk
@@ -304,6 +308,32 @@ class ChunkStore:
                 if chunk is not None and chunk.contents.throne is not None:
                     found.append(chunk)
         return found
+
+    def secrets_near(self, origin, radius: int) -> list:
+        """Undiscovered chambers in the chunks around a point, with their chunk."""
+        size = self._config.chunk_size
+        cx, cy = self.chunk_coords(*origin)
+        span = radius // size + 1
+        found = []
+        for dy in range(-span, span + 1):
+            for dx in range(-span, span + 1):
+                chunk = self._chunks.get((cx + dx, cy + dy))
+                if chunk is not None and chunk.contents.secret is not None:
+                    found.append(chunk)
+        return found
+
+    def open_secret(self, chunk) -> bool:
+        """Break the wall into a chamber and forget it was ever hidden."""
+        x, y, _kind = chunk.contents.secret
+        size = self._config.chunk_size
+        centre = (x - chunk.cx * size, y - chunk.cy * size)
+        opened = secrets.open_door(chunk.tiles, centre, size)
+        chunk.contents.secret = None
+        return opened
+
+    def stall_at(self, x: int, y: int):
+        """The stall standing on a global tile, if any."""
+        return self.contents_at(x, y).stall_at(x, y)
 
     def shrine_at(self, x: int, y: int):
         """The shrine on a global tile, spent or not."""
@@ -508,6 +538,23 @@ def _generate_chunk(
     _drill_seam_corridors(tiles, seed, cx, cy, config)
     _ensure_interior_connected(tiles)
     return tiles
+
+
+def _hide_a_room(tiles, seed: int, cx: int, cy: int, config: Config):
+    """Carve a sealed chamber, after the pass that connects everything.
+
+    Order matters and is the whole trick: connectivity runs first and knows
+    nothing about this room, so nothing ever joins it up. It is rock with a
+    hollow in it until somebody notices.
+    """
+    rng = random.Random(_hash_ints(seed, cx, cy, _SECRET_SALT) % (1 << 63))
+    if rng.random() >= config.secret_chance:
+        return None
+    spot = secrets.carve(tiles, rng, config.chunk_size)
+    if spot is None:
+        return None
+    size = config.chunk_size
+    return (cx * size + spot[0], cy * size + spot[1], secrets.pick_kind(rng))
 
 
 def _edge_jitter(seed: int, kind: str, owner_cx: int, owner_cy: int, config: Config) -> int:

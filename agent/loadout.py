@@ -164,15 +164,29 @@ def active_synergies(derived: Derived) -> tuple[Synergy, ...]:
 
 
 def score(derived: Derived, config: Config) -> float:
-    """What this loadout is worth to the agent, taste and synergies included."""
+    """What this loadout is worth to the agent, taste and synergies included.
+
+    Spells are counted here because they were not, and that was a hole rather
+    than a choice: the agent placed no value at all on the one thing that lets
+    it hurt something it is not standing next to, so it would put down a focus
+    for a ring with two more defence and never buy one at any price. A second
+    spell is worth less than the first - the cooldowns overlap and there is
+    one pool to pay from - so they are counted with diminishing returns.
+    """
+    spells = sum(
+        config.v_spell * (config.v_spell_falloff ** index)
+        for index in range(len(derived.spells))
+    )
     total = (
         config.v_attack * derived.attack
         + config.v_defense * derived.defense
         + config.v_max_hp * derived.max_hp
+        + config.v_max_mp * derived.max_mp
         + config.v_fov * derived.fov_radius
         + config.v_memory * derived.memory_ttl
         + config.v_explore * derived.w_explore
         + config.v_trigger * sum(derived.triggers.values())
+        + spells
     )
     # Recklessness is priced rather than free: a lower flee threshold buys a
     # longer life, so an item that makes the agent bold has to earn it.

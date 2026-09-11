@@ -23,6 +23,7 @@ from render.palette import background_grid, item_color, monster_color, terrain_c
 from world.tiles import Tile
 
 SHRINE_GLYPH = "&"
+SHOP_GLYPH = "%"
 
 Position = tuple[int, int]
 Color = tuple[int, int, int]
@@ -42,6 +43,8 @@ def thing_color(glyph: str, config: Config) -> Color:
     """Whatever is standing on a tile: monsters by threat, items by kind."""
     if glyph == SHRINE_GLYPH:
         return config.shrine_color
+    if glyph == SHOP_GLYPH:
+        return config.shop_color
     if glyph in config.monster_colors:
         return monster_color(glyph, config)
     return item_color(glyph, config)

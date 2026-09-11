@@ -35,7 +35,7 @@ def test_the_sheet_explains_everything_that_can_be_on_screen():
         {tile.glyph for tile in Tile}
         | {kind.glyph for kind in MONSTERS}
         | {kind.glyph for kind in ITEMS}
-        | {GRAVE.glyph, "&", DEFAULT_CONFIG.agent_glyph}
+        | {GRAVE.glyph, "&", "%", DEFAULT_CONFIG.agent_glyph}
         | _boss_glyphs()
         | _bolt_glyphs()
     )
@@ -55,7 +55,7 @@ def test_the_sheet_explains_nothing_that_is_not_real():
         {tile.glyph for tile in Tile}
         | {kind.glyph for kind in MONSTERS}
         | {kind.glyph for kind in ITEMS}
-        | {GRAVE.glyph, "&", DEFAULT_CONFIG.agent_glyph}
+        | {GRAVE.glyph, "&", "%", DEFAULT_CONFIG.agent_glyph}
         | _boss_glyphs()
         | _bolt_glyphs()
     )

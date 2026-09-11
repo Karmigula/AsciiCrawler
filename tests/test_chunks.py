@@ -46,6 +46,25 @@ def _merged(store: ChunkStore, cx0: int, cy0: int, nx: int, ny: int) -> list[lis
     ]
 
 
+def _hidden(store: ChunkStore, cx0: int, cy0: int, nx: int, ny: int) -> set:
+    """Grid-local tiles belonging to chambers nobody has opened yet."""
+    from world.secrets import ROOM
+
+    reach = ROOM // 2
+    sealed = set()
+    for gx in range(nx):
+        for gy in range(ny):
+            chunk = store.get_chunk(cx0 + gx, cy0 + gy)
+            if chunk.contents.secret is None:
+                continue
+            x, y, _kind = chunk.contents.secret
+            local = (x - (cx0 + gx) * SIZE, y - (cy0 + gy) * SIZE)
+            for dx in range(-reach, reach + 1):
+                for dy in range(-reach, reach + 1):
+                    sealed.add((gx * SIZE + local[0] + dx, gy * SIZE + local[1] + dy))
+    return sealed
+
+
 def _flood(grid: list[list[int]], start: tuple[int, int]) -> set[tuple[int, int]]:
     """Agent-movement flood (8-dir, no corner cutting) over a merged grid."""
     height, width = len(grid), len(grid[0])
@@ -140,9 +159,17 @@ def test_each_shared_border_has_exactly_one_mutually_passable_crossing(seed):
 def test_flood_fill_across_borders_merges_all_floor(seed):
     """Mutual passability, the strong form: one flood from a chunk center
     with the agent's movement rules reaches every FLOOR tile of the grid,
-    crossing every internal border through the seam corridors."""
+    crossing every internal border through the seam corridors.
+
+    Sealed chambers are the one exception, and they are subtracted rather than
+    tolerated: a secret room is unreachable floor on purpose, and every other
+    scrap of unreachable floor is still a bug. Taking the whole test down to
+    "most floor is reachable" would have hidden exactly what it was written
+    to catch.
+    """
+    store = _store(seed)
     for cx0, cy0, nx, ny in GRIDS:
-        grid = _merged(_store(seed), cx0, cy0, nx, ny)
+        grid = _merged(store, cx0, cy0, nx, ny)
         start = (MID, MID)  # center of the (cx0, cy0) chunk, grid-local
         floors = {
             (x, y)
@@ -151,7 +178,7 @@ def test_flood_fill_across_borders_merges_all_floor(seed):
             if tile == FLOOR
         }
         assert start in floors
-        assert _flood(grid, start) == floors
+        assert _flood(grid, start) == floors - _hidden(store, cx0, cy0, nx, ny)
 
 
 # ---------------------------------------------------------- determinism

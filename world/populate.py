@@ -89,6 +89,15 @@ class Trap:
 
 
 @dataclass
+class Stall:
+    """A shop on the floor. The goods live on it, not in the chunk."""
+
+    x: int
+    y: int
+    offers: list = field(default_factory=list)
+
+
+@dataclass
 class Shrine:
     """A totem, effigy or pillar: touch it once and find out what it was.
 
@@ -114,6 +123,9 @@ class ChunkContents:
     items: list[Item] = field(default_factory=list)
     traps: list[Trap] = field(default_factory=list)
     shrines: list[Shrine] = field(default_factory=list)
+    stalls: list[Stall] = field(default_factory=list)
+    # (x, y, kind) of the sealed chamber in this chunk, until it is found.
+    secret: tuple | None = None
     # (x, y, boss key) where this chunk's throned boss waits, if it has one.
     # Held rather than spawned: a boss is built at the level it is met.
     throne: tuple | None = None
@@ -159,6 +171,13 @@ class ChunkContents:
                     index[(item.x, item.y)] = item
             self._item_index = index
         return self._item_index.get((x, y))
+
+    def stall_at(self, x: int, y: int):
+        """The stall on a tile, if there is one. At most a couple per chunk."""
+        for stall in self.stalls:
+            if (stall.x, stall.y) == (x, y):
+                return stall
+        return None
 
     def shrine_at(self, x: int, y: int):
         """There are a handful per chunk at most, so a scan is the right cost."""
@@ -211,6 +230,28 @@ def _place_boss(rng, spots, taken, contents, biome, cx, cy, config, origin) -> N
     if spot is None:
         return
     contents.throne = (origin[0] + spot[0], origin[1] + spot[1], boss.key)
+
+
+def _place_stall(rng, spots, taken, contents, cx, cy, config, origin) -> None:
+    """Set up a stall, rarely, and never on the doorstep.
+
+    Its stock is rolled here with the chunk's own seed, so the same world
+    always offers the same three things in the same place - a shop you can
+    walk back to is worth more than one that rerolls behind you.
+    """
+    from sim.shop import stock
+
+    if max(abs(cx), abs(cy)) <= config.shop_free_radius:
+        return
+    if rng.random() >= config.shop_chance:
+        return
+    spot = next(taken, None)
+    if spot is None:
+        return
+    x, y = origin[0] + spot[0], origin[1] + spot[1]
+    contents.stalls.append(
+        Stall(x=x, y=y, offers=stock(rng, depth_fraction(cx, cy, config), config, x, y))
+    )
 
 
 def _place_shrine(rng, spots, taken, contents, biome, cx, cy, config, origin) -> None:
@@ -325,6 +366,7 @@ def populate(
     _place_shrine(
         rng, spots, taken, contents, biome, cx, cy, config, (origin_x, origin_y)
     )
+    _place_stall(rng, spots, taken, contents, cx, cy, config, (origin_x, origin_y))
     if throne:
         _place_boss(
             rng, spots, taken, contents, biome, cx, cy, config, (origin_x, origin_y)

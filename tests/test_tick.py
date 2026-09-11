@@ -508,7 +508,10 @@ def test_gold_and_potions_are_counted_not_worn():
     rng = random.Random(1)
     _walk_onto(agent, world, DEFAULT_CONFIG, (21, 20), rng)
     _walk_onto(agent, world, DEFAULT_CONFIG, (22, 20), rng)
-    assert agent.gold == 1
+    # A pile, not a coin: it used to be worth exactly one, which made every
+    # stall in the game unaffordable. What this is protecting is that neither
+    # ends up worn, not the size of the pile.
+    assert agent.gold >= DEFAULT_CONFIG.gold_pile_min
     assert agent.potions == 1
     assert agent.equipped == {}
 

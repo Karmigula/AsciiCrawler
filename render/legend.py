@@ -17,6 +17,7 @@ from sim.monsters import MONSTERS
 from world.tiles import Tile
 
 SHRINE_GLYPH = "&"
+SHOP_GLYPH = "%"
 
 Row = tuple[str, str, tuple[int, int, int]]
 
@@ -67,6 +68,7 @@ def _item_rows(config: Config) -> list[Row]:
     ]
     rows.append((GRAVE.glyph, "a grave - somebody died here", item_color(GRAVE.glyph, config)))
     rows.append((SHRINE_GLYPH, "a totem - blesses or curses, once", config.shrine_color))
+    rows.append((SHOP_GLYPH, "a stall - three things, for gold", config.shop_color))
     return rows
 
 

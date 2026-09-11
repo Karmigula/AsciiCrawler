@@ -25,6 +25,7 @@ import random
 from dataclasses import dataclass, field
 
 MOVED = "moved"
+SHOP_GLYPH = "%"
 ATTACKED = "attacked"
 BLOCKED = "blocked"
 
@@ -40,6 +41,8 @@ from sim.combat import agent_hits_monster, xp_for
 from sim import chronicle as story
 from sim import effects as status
 from sim import names
+from sim import shop
+from world import secrets
 from sim import bosses as boss_table
 from sim import monsters as monsters_module
 from sim import spells as magic
@@ -102,6 +105,13 @@ class AgentState:
     traps_found: int = 0
     traps_sprung: int = 0
     shrines_touched: int = 0
+    purchases: int = 0
+    secrets_found: int = 0
+    # Stalls it has looked at and walked away from, and the purse it had at
+    # the time. Without this it stands at a counter it cannot use, re-deciding
+    # to go there every tick: one run spent 3,208 ticks doing exactly that.
+    # Keyed on gold so a fatter purse is a reason to look again.
+    declined_stalls: dict = field(default_factory=dict)
     # Totems it has already asked. Remembered so it does not stand there
     # asking a spent one over and over: the glyph is still on the floor and
     # memory has no way of knowing it has gone quiet.
@@ -132,6 +142,7 @@ def tick(agent: AgentState, world, rng: random.Random, config: Config) -> None:
             # shift every roll after it, and a name should not move a monster.
             agent.name = names.name_for(getattr(world, "seed", 0), agent.deaths)
     _touch_shrine(agent, world, rng, config)
+    _trade(agent, world, config)
     mind = _refresh_loadout(agent, config)
     world.ensure_loaded((agent.x, agent.y))
     if not _cast(agent, world, rng, mind) and not _kite(agent, world, config):
@@ -142,6 +153,7 @@ def tick(agent: AgentState, world, rng: random.Random, config: Config) -> None:
     _burn(agent, world, config)
     _choke(agent, world, config)
     _spot_traps(agent, world, rng, config)
+    _notice_secret(agent, world, rng, config)
     _wake_thrones(agent, world, config)
     _send_a_boss(agent, world, rng, config)
     _fade_effects(agent)
@@ -209,6 +221,114 @@ def _boss_monster(kind_key: str, level: int, x: int, y: int, seed: int, config):
         hp=kind.hp,
         name=f"{names.given_name(rng)}, {boss.title}",
     )
+
+
+def _notice_secret(agent: AgentState, world, rng: random.Random, config: Config) -> None:
+    """Now and then, spot that a wall is not as thick as it looks.
+
+    A roll per tick while near one rather than a certainty at some distance:
+    finding a hidden room should feel like luck. The creature has no idea it
+    is looking - there is nothing to plan toward, and it cannot want what it
+    cannot see, which is the same rule everything else here follows.
+    """
+    look = getattr(world, "secrets_near", None)
+    if look is None:
+        return
+    for chunk in look((agent.x, agent.y), config.secret_notice_radius):
+        x, y, kind = chunk.contents.secret
+        if _chebyshev((agent.x, agent.y), (x, y)) > config.secret_notice_radius:
+            continue
+        if rng.random() >= config.secret_notice_chance:
+            continue
+        if not world.open_secret(chunk):
+            continue
+        agent.secrets_found += 1
+        agent.log.record(agent.tick_count, story.found_secret(secrets.LABELS[kind]))
+        _furnish_secret(agent, world, rng, config, (x, y), kind)
+        return
+
+
+def _furnish_secret(
+    agent: AgentState, world, rng: random.Random, config: Config, centre, kind: str
+) -> None:
+    """Put in the room whatever sort of room it turned out to be.
+
+    Filled on discovery rather than at worldgen, for the reason the bosses
+    are: a hoard rolled when the chunk was made is a windfall the creature
+    cannot use yet or junk by the time it arrives.
+    """
+    x, y = centre
+    if kind == "hoard":
+        from sim.items import ITEMS
+
+        sellable = [item for item in ITEMS if item.slot is not None]
+        drop = getattr(world, "drop_item", None)
+        if drop is None:
+            return
+        for index in range(config.secret_hoard_items):
+            spot = (x + (index % 3) - 1, y + (index // 3) - 1)
+            if world.tile_at(*spot).passable:
+                drop(sellable[rng.randrange(len(sellable))], *spot, rng)
+        return
+
+    if kind == "well":
+        # The only full heal in the game that is not a level-up, which is why
+        # a still pool is worth more than what is lying in a hoard.
+        if agent.stats is not None and agent.derived is not None:
+            agent.stats.hp = agent.derived.max_hp
+            agent.stats.recover(agent.derived.max_mp, agent.derived.max_mp)
+        return
+
+    if kind == "trap":
+        spawn = getattr(world, "spawn_monster", None)
+        if spawn is None or agent.stats is None:
+            return
+        from sim.monsters import table_for_tier
+        from world.populate import Monster, max_tier_for
+
+        table = table_for_tier(max_tier_for(x // config.chunk_size, y // config.chunk_size, config))
+        for index in range(config.secret_ambush_monsters):
+            spot = (x + (index % 3) - 1, y + (index // 3) - 1)
+            if spot == (agent.x, agent.y) or not world.tile_at(*spot).passable:
+                continue
+            kind_of = table[rng.randrange(len(table))]
+            spawn(Monster(kind=kind_of, x=spot[0], y=spot[1], hp=kind_of.hp))
+        return
+
+    if kind == "gate":
+        _step_through_gate(agent, world, rng, config)
+
+
+def _step_through_gate(agent: AgentState, world, rng: random.Random, config: Config) -> None:
+    """Throw the creature somewhere else entirely.
+
+    Memory survives, which is the point: it wakes up somewhere it has never
+    been, with everything it knows about a place it can no longer see. The
+    plans it was carrying are about a part of the world it is no longer in.
+    """
+    import math
+
+    for _ in range(40):
+        angle = rng.uniform(0, 6.283185)
+        reach = rng.randint(
+            config.secret_gate_distance // 2, config.secret_gate_distance
+        )
+        spot = (
+            agent.x + int(reach * math.cos(angle)),
+            agent.y + int(reach * math.sin(angle)),
+        )
+        world.ensure_loaded(spot)
+        if not world.tile_at(*spot).passable:
+            continue
+        if getattr(world, "entity_at", lambda *a: None)(*spot) is not None:
+            continue
+        agent.x, agent.y = spot
+        agent.crossed = []
+        agent.explorer.drop_plan()
+        agent.looter.clear()
+        agent.log.record(agent.tick_count, story.through_the_gate())
+        _observe(agent, world, agent.mind(config))
+        return
 
 
 def _wake_thrones(agent: AgentState, world, config: Config) -> None:
@@ -465,6 +585,63 @@ def _nearest_within(agent: AgentState, world, entity_at, reach: int, visible):
     return None
 
 
+def _uninteresting(agent: AgentState) -> set:
+    """Spots the creature has finished with, for the loot scorer to skip.
+
+    A spent totem is finished with for good. A stall is only finished with
+    until the purse changes: nothing it could not afford last time has got
+    any cheaper, but it may now be able to pay.
+    """
+    stale = {
+        coord
+        for coord, purse in agent.declined_stalls.items()
+        if agent.gold <= purse
+    }
+    return agent.spent_shrines | stale
+
+
+def _trade(agent: AgentState, world, config: Config) -> None:
+    """Buy one thing, if standing at a stall and anything there is worth it.
+
+    One purchase per visit: the creature works out which single buy leaves it
+    best off and takes that. Buying twice would need it to re-plan around
+    what it has just put on, and a stall is not the place to be standing while
+    it thinks.
+    """
+    look = getattr(world, "stall_at", None)
+    if look is None or agent.stats is None:
+        return
+    for coord in agent.crossed or [(agent.x, agent.y)]:
+        stall = look(*coord)
+        if stall is None or not stall.offers:
+            continue
+        offer = shop.choose(
+            agent.stats,
+            agent.equipped,
+            agent.backpack,
+            stall.offers,
+            agent.gold,
+            config,
+            agent.potions,
+        )
+        if offer is None:
+            agent.declined_stalls[(stall.x, stall.y)] = agent.gold
+            continue
+        agent.gold -= offer.price
+        agent.declined_stalls.pop((stall.x, stall.y), None)
+        offer.sold = True
+        stall.offers = [row for row in stall.offers if not row.sold]
+        agent.purchases += 1
+        agent.log.record(
+            agent.tick_count, story.bought(offer.item, offer.price)
+        )
+        if offer.item.kind.slot is None:
+            agent.potions += 1
+        else:
+            _reconsider_loadout(agent, offer.item, config)
+        return
+
+
 def _touch_shrine(agent: AgentState, world, rng: random.Random, config: Config) -> None:
     """Standing on a totem is asking it a question. It answers once.
 
@@ -521,6 +698,20 @@ def _pick_up(agent: AgentState, world, config: Config) -> None:
     agent.crossed = []
 
 
+def gold_in(coord, seed: int, config: Config) -> int:
+    """How much is in the pile on this tile.
+
+    Seeded from the tile so it does not change between a look and a pickup,
+    and scaled by how far out it is: deep gold is the only gold that buys the
+    deep stalls' stock.
+    """
+    x, y = coord
+    depth = max(abs(x), abs(y)) / max(1, config.gold_depth_scale)
+    spread = config.gold_pile_max - config.gold_pile_min
+    roll = random.Random((seed * 7919 + x) * 7919 + y).random()
+    return config.gold_pile_min + int(roll * spread * (1.0 + min(2.0, depth)))
+
+
 def _take_one(agent: AgentState, world, config: Config, coord, take, peek) -> None:
     """Lift whatever is on one tile the agent covered."""
     resting = peek(*coord)
@@ -548,7 +739,12 @@ def _take_one(agent: AgentState, world, config: Config, coord, take, peek) -> No
     else:
         agent.log.record(agent.tick_count, story.found(item))
     if item.kind.key == "gold":
-        agent.gold += 1
+        # A pile, not a coin. It was worth exactly one, which made a purse of
+        # six the usual result of a long run and every stall unaffordable -
+        # an economy where nothing is ever buyable is not an economy. Worth
+        # more further out, like everything else down here, and worked out
+        # from the tile so the same pile is always the same pile.
+        agent.gold += gold_in(coord, getattr(world, "seed", 0), config)
         return
     if item.kind.key == "potion":
         agent.potions += 1
@@ -974,9 +1170,10 @@ def _things_seen(world, observation) -> tuple[dict, dict]:
     entity_at = getattr(world, "entity_at", None)
     item_at = getattr(world, "item_at", None)
     shrine_at = getattr(world, "shrine_at", None)
+    stall_at = getattr(world, "stall_at", None)
     entities: dict = {}
     items: dict = {}
-    if entity_at is None and item_at is None and shrine_at is None:
+    if entity_at is None and item_at is None and shrine_at is None and stall_at is None:
         return entities, items
     for coord in observation:
         if entity_at is not None:
@@ -997,6 +1194,11 @@ def _things_seen(world, observation) -> tuple[dict, dict]:
             shrine = shrine_at(*coord)
             if shrine is not None:
                 items[coord] = shrine.glyph
+                continue
+        if stall_at is not None:
+            stall = stall_at(*coord)
+            if stall is not None and stall.offers:
+                items[coord] = SHOP_GLYPH
     return entities, items
 
 
@@ -1076,7 +1278,8 @@ def _think(agent: AgentState, rng: random.Random, config: Config) -> None:
             config,
             agent.potions,
             health,
-            agent.spent_shrines,
+            _uninteresting(agent),
+            agent.gold,
         )
         is not None
     ):

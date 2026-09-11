@@ -75,6 +75,20 @@ def levelled(level: int) -> str:
     return f"reached level {level}"
 
 
+def found_secret(label: str) -> str:
+    return f"found {label} behind a wall"
+
+
+def through_the_gate() -> str:
+    return "stepped through and came out somewhere else"
+
+
+def bought(item, price: int) -> str:
+    """Items name themselves the same way they do when found on the floor."""
+    what = item.name if item.affixes else f"plain {item.kind.key}"
+    return f"bought the {what} for {price}"
+
+
 def boss_stirs(name: str) -> str:
     return f"{name} stirs"
 

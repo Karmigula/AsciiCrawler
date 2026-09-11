@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+### A shop in the dark
+
+Gold had no use: a number that went up, which made every coin a souvenir and
+made the creature right to walk past them. Stalls sell three things, and what
+it buys is worked out with the same scorer that dresses it - an offer is
+worth the difference between the best set with it and the best set without,
+so an epic ring is worth nothing to something already wearing better.
+
+It takes the best thing it can afford rather than the best value per coin: it
+buys once per visit and cannot save for later, and watching it leave a better
+sword on the counter because the cheap one was more *efficient* read as a
+bug. It walks away from a stall with nothing worth having, and remembers
+doing so until its purse changes.
+
+### Rooms that are not on any map
+
+Sealed chambers, carved after the pass that guarantees everything else is
+reachable, so nothing ever joins them up. The creature notices one by being
+near it and getting lucky - it cannot plan toward a room it has no idea
+exists, which is the same rule everything else here follows.
+
+Four sorts, filled when the door opens rather than at worldgen: **a hoard** of
+gear, **a still pool** that puts it right, **a humming arch** that throws it
+somewhere else entirely - memory intact, which is the appeal - and **a baited
+room** with something waiting in it.
+
 ### Fixed
 
 - **Spells fired through walls, at things nobody had seen.** Targeting

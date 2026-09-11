@@ -37,6 +37,7 @@ from sim.items import ITEMS
 
 ITEM_BY_GLYPH = {kind.glyph: kind for kind in ITEMS}
 SHRINE_GLYPH = "&"
+SHOP_GLYPH = "%"
 
 Decision = tuple[Position, list[Position]]  # (target, steps after start)
 
@@ -291,6 +292,7 @@ def expected_upgrade(
     config: Config,
     potions: int = 0,
     health: float = 1.0,
+    gold: int = 0,
 ) -> float:
     """What the agent *guesses* a remembered item is worth, from its glyph alone.
 
@@ -306,6 +308,12 @@ def expected_upgrade(
     over twenty thousand ticks it spent 1,219 of them hurt enough to drink and
     was holding a potion for 66 of those.
     """
+    if glyph == SHOP_GLYPH:
+        # Worth the walk in proportion to what it could spend there. A stall
+        # is scenery to a creature with no gold, and the reason to stoop for
+        # coins in the first place to one with a purse.
+        purse = min(1.0, gold / max(1, config.shop_interest_gold))
+        return config.loot_expectation * config.w_shop * purse
     if glyph == SHRINE_GLYPH:
         # A totem is a question, not a prize. The agent knows there is one
         # over there and nothing else - not whether this biome's answers are
@@ -350,6 +358,7 @@ class LootGoal:
         potions: int = 0,
         health: float = 1.0,
         skip=(),
+        gold: int = 0,
     ) -> Decision | None:
         """Score remembered items by expected upgrade over path cost.
 
@@ -364,7 +373,7 @@ class LootGoal:
             glyph = memory.snapshot(coord)[1]
             if glyph is None:
                 continue
-            value = expected_upgrade(glyph, equipped, config, potions, health)
+            value = expected_upgrade(glyph, equipped, config, potions, health, gold)
             if value > 0:
                 candidates.append((coord, value))
         if not candidates:
