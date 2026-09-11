@@ -21,6 +21,12 @@ class MonsterKind:
     speed: int
     threat: float
     tier: int
+    # How far it can hit from. One means it has to be standing next to you,
+    # which is what everything in the game did before spells existed.
+    reach: int = 1
+    # A status effect it may leave on the agent when it lands a blow.
+    inflicts: str = ""
+    inflict_chance: float = 0.25
 
 
 MONSTERS: tuple[MonsterKind, ...] = (
@@ -49,3 +55,48 @@ brain prices what it saw: memory holds a snapshot, never a monster."""
 def table_for_tier(max_tier: int) -> tuple[MonsterKind, ...]:
     """Every kind up to `max_tier` — the roll table at a given depth."""
     return tuple(kind for kind in MONSTERS if kind.tier <= max_tier)
+
+
+# What a spell can leave on a monster. Small, and the point of them is that a
+# creature far weaker than a boss can still make the fight winnable: chilled
+# things act less often, withered things hit softer.
+MONSTER_EFFECTS = {
+    "chilled": {"label": "chilled", "slow": 1, "ticks": 60},
+    "withered": {"label": "withered", "attack": -3, "ticks": 80},
+}
+
+
+def afflict(monster, key: str) -> None:
+    """Start (or refresh) an effect on a monster."""
+    rule = MONSTER_EFFECTS.get(key)
+    if rule is None:
+        return
+    monster.effects[key] = rule["ticks"]
+
+
+def effective_speed(monster) -> int:
+    """Ticks between this monster's moves, with anything chilling it."""
+    slow = sum(
+        MONSTER_EFFECTS[key].get("slow", 0)
+        for key in monster.effects
+        if key in MONSTER_EFFECTS
+    )
+    return max(1, monster.kind.speed + slow)
+
+
+def effective_attack(monster) -> int:
+    """What it hits for, with anything withering it."""
+    change = sum(
+        MONSTER_EFFECTS[key].get("attack", 0)
+        for key in monster.effects
+        if key in MONSTER_EFFECTS
+    )
+    return max(1, monster.kind.attack + change)
+
+
+def fade(monster) -> None:
+    """Count a monster's effects down one tick."""
+    for key in list(monster.effects):
+        monster.effects[key] -= 1
+        if monster.effects[key] <= 0:
+            del monster.effects[key]

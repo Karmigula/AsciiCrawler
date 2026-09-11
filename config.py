@@ -274,6 +274,9 @@ class Config:
     # Shrines: how often a chunk has one, and how far in before they appear.
     # Rare on purpose - a blessing you meet every other room is a stat, not an
     # event, and the point of walking to one is that it might be the bad kind.
+    # Only back away from something at least this threatening. Retreating
+    # from a rat reads as cowardice and never ends, because the rat follows.
+    kite_threat_floor: float = 2.0
     shrine_color: tuple[int, int, int] = (198, 160, 224)  # totems, effigies, pillars
     shrine_chance: float = 0.45
     shrine_free_radius: int = 2  # chunks around spawn with none in them

@@ -45,6 +45,8 @@ class Derived:
     w_explore: float
     threat_radius: int
     triggers: dict = field(default_factory=dict)
+    # Spell keys the equipped set grants, in the order the slots gave them.
+    spells: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -93,11 +95,15 @@ def derive(stats, equipped: dict, config: Config, effects=()) -> Derived:
         "threat_radius": float(config.threat_radius),
     }
     triggers: dict = {}
+    spells: list[str] = []
     for item in equipped.values():
         if item is None:
             continue
         for affix in item.affixes:
-            if affix.category == "trigger":
+            if affix.category == "spell":
+                if affix.field not in spells:
+                    spells.append(affix.field)
+            elif affix.category == "trigger":
                 triggers[affix.field] = triggers.get(affix.field, 0.0) + affix.amount
             elif affix.field in COGNITION_FIELDS:
                 cognition[affix.field] += affix.amount
@@ -129,6 +135,7 @@ def derive(stats, equipped: dict, config: Config, effects=()) -> Derived:
         w_explore=max(0.0, cognition["w_explore"]),
         threat_radius=max(1, int(round(cognition["threat_radius"]))),
         triggers=triggers,
+        spells=tuple(spells),
     )
 
 

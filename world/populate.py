@@ -43,6 +43,8 @@ class Monster:
     y: int
     hp: int
     last_moved_tick: int = -1  # guards against acting twice in one tick
+    effects: dict = field(default_factory=dict)  # what a spell left on it
+    name: str = ""  # only the named ones have one
 
 
 @dataclass(frozen=True)

@@ -43,6 +43,21 @@ def monster_hits_agent(
     return stats.take(roll_damage(monster.kind.attack, derived.defense, rng, config))
 
 
+def monster_hits_agent_at_range(
+    monster, stats, derived, rng: random.Random, config: Config
+) -> int:
+    """A blow landed from across the room.
+
+    The same roll as a melee one - a bolt is not weaker for having travelled -
+    but it is the caller's job to have checked the distance, because only the
+    caller knows where anybody is standing.
+    """
+    from sim.monsters import effective_attack
+
+    damage = roll_damage(effective_attack(monster), derived.defense, rng, config)
+    return stats.take(damage)
+
+
 def xp_for(monster, config: Config) -> int:
     """What a corpse is worth — deeper tiers pay more."""
     return (monster.kind.tier + 1) * config.xp_per_tier

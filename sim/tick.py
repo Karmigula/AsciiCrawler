@@ -40,6 +40,8 @@ from sim.combat import agent_hits_monster, xp_for
 from sim import chronicle as story
 from sim import effects as status
 from sim import names
+from sim import monsters as monsters_module
+from sim import spells as magic
 from sim.chronicle import Chronicle
 from sim.hall import Fallen
 from sim.perks import on_kill
@@ -68,6 +70,9 @@ class AgentState:
     crossed: list = field(default_factory=list)
     # Blessings and curses currently running: {key: ticks left}.
     effects: dict = field(default_factory=dict)
+    # Spell cooldowns, {key: ticks left}; absent means ready.
+    cooldowns: dict = field(default_factory=dict)
+    casts: int = 0
     derived: object = None
     _mind: object = None
     _loadout_signature: tuple = ()
@@ -118,7 +123,8 @@ def tick(agent: AgentState, world, rng: random.Random, config: Config) -> None:
     _touch_shrine(agent, world, rng, config)
     mind = _refresh_loadout(agent, config)
     world.ensure_loaded((agent.x, agent.y))
-    _act(agent, world, rng, config)
+    if not _cast(agent, world, rng, config) and not _kite(agent, world, config):
+        _act(agent, world, rng, config)
     _observe(agent, world, mind)
     _pick_up(agent, world, config)
     _quaff(agent, config)
@@ -126,6 +132,7 @@ def tick(agent: AgentState, world, rng: random.Random, config: Config) -> None:
     _choke(agent, world, config)
     _spot_traps(agent, world, rng, config)
     _fade_effects(agent)
+    magic.tick(agent.cooldowns)
     agent.life_depth = max(
         agent.life_depth, int((agent.x * agent.x + agent.y * agent.y) ** 0.5)
     )
@@ -171,6 +178,135 @@ def _refresh_loadout(agent: AgentState, config: Config) -> Config:
         agent.derived = derive(stats, agent.equipped, config, agent.effects)
         agent._mind = effective_config(config, agent.derived)
     return agent._mind
+
+
+def _kite(agent: AgentState, world, config: Config) -> bool:
+    """Back away from something big while the spell reloads. True if it moved.
+
+    Only for a creature that has a spell at all - backing away is pointless
+    otherwise, since it has nothing to do with the distance it just bought.
+    And only from something worth the trouble: retreating from a rat would
+    read as cowardice rather than tactics, and would never end, because the
+    rat follows.
+
+    Cornered, it stops kiting and fights, which is the right answer and also
+    the only one: there is nowhere to go.
+    """
+    derived = agent.derived
+    if derived is None or not derived.spells:
+        return False
+    if not agent.cooldowns:
+        return False  # something is ready; shoot rather than shuffle
+    entity_at = getattr(world, "entity_at", None)
+    if entity_at is None:
+        return False
+
+    here = (agent.x, agent.y)
+    crowding = [
+        monster
+        for dx, dy in DIRS_8
+        if (monster := entity_at(here[0] + dx, here[1] + dy)) is not None
+        and monster.kind.threat >= config.kite_threat_floor
+    ]
+    if not crowding:
+        return False
+
+    away = _step_away(agent, world, entity_at, crowding)
+    if away is None:
+        return False  # cornered: turn and fight
+    agent.x, agent.y = away
+    agent.crossed = [away, *_slide(agent, away[0] - here[0], away[1] - here[1], world, config)]
+    _spring_trap(agent, world, config)
+    agent.explorer.drop_plan()
+    agent.looter.clear()
+    return True
+
+
+def _step_away(agent: AgentState, world, entity_at, crowding) -> tuple | None:
+    """The neighbouring tile that puts the most distance between them."""
+    here = (agent.x, agent.y)
+    current = min(_chebyshev(here, (m.x, m.y)) for m in crowding)
+    best = None
+    best_gap = current
+    for dx, dy in DIRS_8:
+        step = (here[0] + dx, here[1] + dy)
+        if not world.tile_at(*step).passable:
+            continue
+        if dx and dy and not (
+            world.tile_at(here[0] + dx, here[1]).passable
+            and world.tile_at(here[0], here[1] + dy).passable
+        ):
+            continue  # the same corner rule the planner uses
+        if entity_at(*step) is not None:
+            continue
+        gap = min(_chebyshev(step, (m.x, m.y)) for m in crowding)
+        if gap > best_gap:
+            best, best_gap = step, gap
+    return best
+
+
+def _chebyshev(a, b) -> int:
+    return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
+
+
+def _cast(agent: AgentState, world, rng: random.Random, config: Config) -> bool:
+    """Throw something at the nearest monster in reach. True if it spent the tick.
+
+    Only at things the agent can see now, and only in a straight-ish line -
+    the same Chebyshev reach everything else here measures in. A spell is the
+    one thing the creature can do at a distance, so it is tried before
+    walking: stepping into range and being hit on the way is the mistake this
+    ordering exists to avoid.
+    """
+    derived = agent.derived
+    if derived is None or not derived.spells:
+        return False
+    available = magic.ready(derived.spells, agent.cooldowns)
+    if not available:
+        return False
+    entity_at = getattr(world, "entity_at", None)
+    if entity_at is None:
+        return False
+
+    here = (agent.x, agent.y)
+    best = None
+    for spell in available:
+        target = _nearest_within(agent, world, entity_at, spell.reach)
+        if target is not None:
+            best = (spell, target)
+            break
+    if best is None:
+        return False
+
+    spell, monster = best
+    monster.hp -= spell.damage
+    agent.cooldowns[spell.key] = spell.cooldown
+    agent.casts += 1
+    if spell.inflicts:
+        monsters_module.afflict(monster, spell.inflicts)
+    agent.log.record(agent.tick_count, story.cast(spell.label, monster.kind.key))
+    if monster.hp <= 0:
+        _kill(agent, monster, world, rng, config)
+    return True
+
+
+def _nearest_within(agent: AgentState, world, entity_at, reach: int):
+    """The closest monster the agent can see within `reach`, or None.
+
+    Walks outward so the first hit is the nearest; the agent should be
+    shooting whatever is about to reach it rather than whatever it noticed
+    first.
+    """
+    for radius in range(1, reach + 1):
+        for dy in range(-radius, radius + 1):
+            for dx in range(-radius, radius + 1):
+                if max(abs(dx), abs(dy)) != radius:
+                    continue
+                coord = (agent.x + dx, agent.y + dy)
+                monster = entity_at(*coord)
+                if monster is not None:
+                    return monster
+    return None
 
 
 def _touch_shrine(agent: AgentState, world, rng: random.Random, config: Config) -> None:

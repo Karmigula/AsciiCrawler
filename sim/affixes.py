@@ -56,6 +56,14 @@ AFFIX_POOL: tuple[Affix, ...] = (
     Affix("hale", "hale", "stat", "max_hp", 8),
     Affix("giants", "of giants", "stat", "max_hp", 16),
     # --- triggers --------------------------------------------------------
+    # --- spells ----------------------------------------------------------
+    # Rare, and the only way the agent gets to hurt anything it is not
+    # standing next to. The label reads as a name so the HUD line stays a
+    # sentence: "a smouldering amulet of embers".
+    Affix("embers", "of embers", "spell", "ember_bolt", 1),
+    Affix("frostbound", "frostbound", "spell", "frost_lance", 1),
+    Affix("withering", "withering", "spell", "withering", 1),
+    Affix("sparking", "sparking", "spell", "spark", 1),
     Affix("vampiric", "vampiric", "trigger", "on_kill_heal", 4),
     Affix("thorned", "thorned", "trigger", "on_hit_taken_reflect", 2),
     Affix("hunters", "of the hunter", "trigger", "on_kill_xp", 6),

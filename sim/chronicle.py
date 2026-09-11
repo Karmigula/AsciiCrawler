@@ -75,6 +75,10 @@ def levelled(level: int) -> str:
     return f"reached level {level}"
 
 
+def cast(spell: str, target: str) -> str:
+    return f"{spell} at the {target}"
+
+
 def touched_shrine(kind: str, effect: str, blessed: bool) -> str:
     """What the totem did, named plainly enough to follow without a legend."""
     return f"{'blessed with' if blessed else 'cursed with'} {effect} at {kind}"

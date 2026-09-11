@@ -30,6 +30,12 @@ def test_every_affix_names_a_field_something_actually_reads():
             assert affix.field in STAT_FIELDS, affix.key
         elif affix.category == "curse":
             assert affix.field in STAT_FIELDS | COGNITION_FIELDS, affix.key
+        elif affix.category == "spell":
+            # The field names the spell it grants, so a typo here is an
+            # amulet that promises something the game cannot cast.
+            from sim.spells import BY_KEY
+
+            assert affix.field in BY_KEY, affix.key
         else:
             assert affix.category == "trigger"
 

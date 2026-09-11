@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Things that can hit you from across the room
+
+Rare focuses - an amulet of embers, a frostbound ring - grant a spell on a
+cooldown, and a spell is the first thing in this game the creature can do to
+something it is not standing next to. Frost and withering leave their mark on
+what they hit: chilled things act less often, withered things hit softer,
+which is how something small makes a fight with something far bigger
+winnable.
+
+Monsters gained the same reach, so the trick will be used on the agent too.
+
+With a spell in hand the creature kites - it backs away from anything big
+while the cooldown runs and shoots when it comes up. Only from things worth
+retreating from, since backing away from a rat reads as cowardice and never
+ends, and never when cornered, because shuffling in place is worse than
+turning to fight.
+
 ### A cheat sheet, so you can tell what you are looking at
 
 <kbd>j</kbd> opens it, in the window and in the browser. One table, built from
