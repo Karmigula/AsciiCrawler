@@ -38,6 +38,7 @@ from agent.stats import Stats
 from sim.ai import take_turns
 from sim.combat import agent_hits_monster, xp_for
 from sim import chronicle as story
+from sim import effects as status
 from sim import names
 from sim.chronicle import Chronicle
 from sim.hall import Fallen
@@ -65,6 +66,8 @@ class AgentState:
     name: str = ""
     # Every tile entered this tick. Usually one; on ice, the whole skid.
     crossed: list = field(default_factory=list)
+    # Blessings and curses currently running: {key: ticks left}.
+    effects: dict = field(default_factory=dict)
     derived: object = None
     _mind: object = None
     _loadout_signature: tuple = ()
@@ -86,6 +89,7 @@ class AgentState:
     deaths: int = 0
     traps_found: int = 0
     traps_sprung: int = 0
+    shrines_touched: int = 0
     # Per-life, reset on death: a hall of fame entry is one life, not a career.
     life_kills: int = 0
     life_depth: int = 0
@@ -111,6 +115,7 @@ def tick(agent: AgentState, world, rng: random.Random, config: Config) -> None:
             # rather than from `rng`: drawing from the tick's stream would
             # shift every roll after it, and a name should not move a monster.
             agent.name = names.name_for(getattr(world, "seed", 0), agent.deaths)
+    _touch_shrine(agent, world, rng, config)
     mind = _refresh_loadout(agent, config)
     world.ensure_loaded((agent.x, agent.y))
     _act(agent, world, rng, config)
@@ -120,6 +125,7 @@ def tick(agent: AgentState, world, rng: random.Random, config: Config) -> None:
     _burn(agent, world, config)
     _choke(agent, world, config)
     _spot_traps(agent, world, rng, config)
+    _fade_effects(agent)
     agent.life_depth = max(
         agent.life_depth, int((agent.x * agent.x + agent.y * agent.y) ** 0.5)
     )
@@ -155,12 +161,50 @@ def _refresh_loadout(agent: AgentState, config: Config) -> Config:
                 for slot, item in agent.equipped.items()
             )
         ),
+        # Which effects are running, not how long they have left: the
+        # modifiers depend on the set, and putting the countdown in here would
+        # rebuild the whole bundle every tick for no change at all.
+        tuple(sorted(agent.effects)),
     )
     if signature != agent._loadout_signature or agent.derived is None:
         agent._loadout_signature = signature
-        agent.derived = derive(stats, agent.equipped, config)
+        agent.derived = derive(stats, agent.equipped, config, agent.effects)
         agent._mind = effective_config(config, agent.derived)
     return agent._mind
+
+
+def _touch_shrine(agent: AgentState, world, rng: random.Random, config: Config) -> None:
+    """Standing on a totem is asking it a question. It answers once.
+
+    Rolled here rather than when the chunk was built, so walking over to one
+    is a decision made under real uncertainty: the agent cannot know whether
+    the rimed effigy in the frozen deep is worth the trip, and neither can
+    anybody watching.
+    """
+    look = getattr(world, "shrine_at", None)
+    if look is None:
+        return
+    for coord in agent.crossed or [(agent.x, agent.y)]:
+        shrine = look(*coord)
+        if shrine is None or shrine.spent:
+            continue
+        shrine.spent = True
+        blessed = rng.random() < shrine.blessing_chance
+        pool = status.BLESSINGS if blessed else status.CURSES
+        key = pool[rng.randrange(len(pool))]
+        status.apply(agent.effects, key)
+        agent.shrines_touched += 1
+        agent.log.record(
+            agent.tick_count, story.touched_shrine(shrine.kind, key, blessed)
+        )
+
+
+def _fade_effects(agent: AgentState) -> None:
+    """Count everything running down, and say so when one lets go."""
+    for key in status.tick(agent.effects):
+        kind = status.BY_KEY.get(key)
+        if kind is not None:
+            agent.log.record(agent.tick_count, story.effect_ended(kind.label))
 
 
 def _pick_up(agent: AgentState, world, config: Config) -> None:
@@ -626,9 +670,10 @@ def _things_seen(world, observation) -> tuple[dict, dict]:
     """
     entity_at = getattr(world, "entity_at", None)
     item_at = getattr(world, "item_at", None)
+    shrine_at = getattr(world, "shrine_at", None)
     entities: dict = {}
     items: dict = {}
-    if entity_at is None and item_at is None:
+    if entity_at is None and item_at is None and shrine_at is None:
         return entities, items
     for coord in observation:
         if entity_at is not None:
@@ -639,6 +684,16 @@ def _things_seen(world, observation) -> tuple[dict, dict]:
             item = item_at(*coord)
             if item is not None:
                 items[coord] = item.kind.glyph
+                continue
+        if shrine_at is not None:
+            # Remembered alongside the loot rather than as its own kind of
+            # thing: a totem is scenery the agent can walk to, which is what
+            # an item is as far as memory is concerned. It is never returned
+            # by `item_at`, so nothing tries to pick one up or plan a robbery
+            # around it.
+            shrine = shrine_at(*coord)
+            if shrine is not None:
+                items[coord] = shrine.glyph
     return entities, items
 
 

@@ -75,6 +75,15 @@ def levelled(level: int) -> str:
     return f"reached level {level}"
 
 
+def touched_shrine(kind: str, effect: str, blessed: bool) -> str:
+    """What the totem did, named plainly enough to follow without a legend."""
+    return f"{'blessed with' if blessed else 'cursed with'} {effect} at {kind}"
+
+
+def effect_ended(label: str) -> str:
+    return f"{label} faded"
+
+
 def sprang_trap(damage: int) -> str:
     return f"stepped in a trap ({damage} damage)"
 

@@ -145,6 +145,7 @@ class ChunkStore:
                 cy,
                 self._config,
                 allowed=biome.monsters,
+                biome=biome,
             )
             chunk = Chunk(cx, cy, tiles, contents)
             self._chunks[key] = chunk
@@ -283,6 +284,10 @@ class ChunkStore:
             ):
                 added += 1
         return added
+
+    def shrine_at(self, x: int, y: int):
+        """The shrine on a global tile, spent or not."""
+        return self.contents_at(x, y).shrine_at(x, y)
 
     def trap_at(self, x: int, y: int):
         """The trap on a global tile, hidden or not."""

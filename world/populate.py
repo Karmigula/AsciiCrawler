@@ -87,12 +87,31 @@ class Trap:
 
 
 @dataclass
+class Shrine:
+    """A totem, effigy or pillar: touch it once and find out what it was.
+
+    Which effect it hands out is rolled when the agent reaches it rather than
+    when the chunk is built, so a shrine is a decision to walk over there
+    under uncertainty - which is the only kind of decision this creature can
+    make about one.
+    """
+
+    x: int
+    y: int
+    kind: str  # names the biome's flavour: "effigy", "pillar", ...
+    glyph: str
+    blessing_chance: float = 0.6
+    spent: bool = False
+
+
+@dataclass
 class ChunkContents:
     """Everything living (or lying) in one chunk, in global coordinates."""
 
     monsters: list[Monster] = field(default_factory=list)
     items: list[Item] = field(default_factory=list)
     traps: list[Trap] = field(default_factory=list)
+    shrines: list[Shrine] = field(default_factory=list)
     respawn_tick: int = 0  # Phase 4 reads this; nothing ticks it yet
     respawn_cap: int = 0
 
@@ -136,6 +155,13 @@ class ChunkContents:
             self._item_index = index
         return self._item_index.get((x, y))
 
+    def shrine_at(self, x: int, y: int):
+        """There are a handful per chunk at most, so a scan is the right cost."""
+        for shrine in self.shrines:
+            if (shrine.x, shrine.y) == (x, y):
+                return shrine
+        return None
+
     def trap_at(self, x: int, y: int) -> "Trap | None":
         for trap in self.traps:
             if trap.x == x and trap.y == y:
@@ -163,6 +189,34 @@ def max_tier_for(cx: int, cy: int, config: Config) -> int:
     return min(MAX_TIER, int(depth_fraction(cx, cy, config) * (MAX_TIER + 1)))
 
 
+def _place_shrine(rng, spots, taken, contents, biome, cx, cy, config, origin) -> None:
+    """Stand one totem up, if this chunk has one and the biome has any.
+
+    Uses the same pool of spots as everything else, so a shrine never shares a
+    tile with a monster, an item or a trap - having walked to one, the agent
+    should find out what it does rather than what was standing on it.
+    """
+    if not biome or not biome.shrine:
+        return
+    if max(abs(cx), abs(cy)) <= config.shrine_free_radius:
+        return  # not on the doorstep
+    if rng.random() >= config.shrine_chance:
+        return
+    spot = next(taken, None)
+    if spot is None:
+        return
+    x, y = spot
+    contents.shrines.append(
+        Shrine(
+            x=origin[0] + x,
+            y=origin[1] + y,
+            kind=biome.shrine,
+            glyph=biome.shrine_glyph,
+            blessing_chance=biome.blessing_chance,
+        )
+    )
+
+
 def populate(
     rng: random.Random,
     tiles: np.ndarray,
@@ -170,6 +224,7 @@ def populate(
     cy: int,
     config: Config,
     allowed: tuple = (),
+    biome=None,
 ) -> ChunkContents:
     """Roll this chunk's contents from its own seeded rng. Never mutates tiles.
 
@@ -241,6 +296,10 @@ def populate(
         )
     for x, y in take(round(config.trap_density * len(spots))):
         contents.traps.append(Trap(x=origin_x + x, y=origin_y + y))
+
+    _place_shrine(
+        rng, spots, taken, contents, biome, cx, cy, config, (origin_x, origin_y)
+    )
     return contents
 
 

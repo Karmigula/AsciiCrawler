@@ -264,6 +264,13 @@ class Config:
     ice_step_cost: float = 2.0  # ...and what it pays to END a move on ice
     model_ice_slides: bool = True  # plan slides as physics, not as a penalty
 
+    # Shrines: how often a chunk has one, and how far in before they appear.
+    # Rare on purpose - a blessing you meet every other room is a stat, not an
+    # event, and the point of walking to one is that it might be the bad kind.
+    shrine_color: tuple[int, int, int] = (198, 160, 224)  # totems, effigies, pillars
+    shrine_chance: float = 0.45
+    shrine_free_radius: int = 2  # chunks around spawn with none in them
+
     # fear: threat read off memory, never off world truth
     threat_radius: int = 10  # tiles; remembered monsters further out are ignored
     w_threat: float = 2.5  # how hard threat discounts an EXPLORE candidate

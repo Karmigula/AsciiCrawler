@@ -24,6 +24,7 @@ from dataclasses import dataclass, field, replace
 from itertools import product
 
 from config import Config
+from sim import effects as effects_module
 from sim.affixes import COGNITION_FIELDS
 
 Slot = str
@@ -72,8 +73,15 @@ SYNERGIES: tuple[Synergy, ...] = (
 )
 
 
-def derive(stats, equipped: dict, config: Config) -> Derived:
-    """Fold base stats and every equipped item into effective numbers."""
+def derive(stats, equipped: dict, config: Config, effects=()) -> Derived:
+    """Fold base stats, equipment and any running effects into real numbers.
+
+    Effects land last and can push a number below what the gear gave, because
+    that is what a curse is. They go through the same funnel as everything
+    else so the brain plans on them: a dimmed creature searches with the sight
+    it has, and a dreadful one flees sooner, without either of them knowing
+    why.
+    """
     attack = stats.attack
     defense = stats.defense
     max_hp = stats.max_hp
@@ -101,6 +109,16 @@ def derive(stats, equipped: dict, config: Config) -> Derived:
                 max_hp += int(affix.amount)
         attack += item.kind.attack
         defense += item.kind.defense
+
+    if effects:
+        running = effects_module.modifiers(effects)
+        attack += running["attack"]
+        defense += running["defense"]
+        max_hp += running["max_hp"]
+        cognition["fov_radius"] += running["fov_radius"]
+        cognition["flee_threat"] += running["flee_threat"]
+        cognition["w_explore"] += running["w_explore"]
+
     return Derived(
         attack=attack,
         defense=defense,

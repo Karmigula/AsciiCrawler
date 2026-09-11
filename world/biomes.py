@@ -30,6 +30,11 @@ class Biome:
     builder: str  # which generator: see world.chunks._BUILDERS
     params: dict = field(default_factory=dict)  # generator overrides
     monsters: tuple[str, ...] = ()  # glyphs allowed here; empty means all
+    # What this biome puts up to be worshipped, and how kindly it answers.
+    # `shrine` empty means the place has nothing of the sort.
+    shrine: str = ""
+    shrine_glyph: str = "&"  # ascii on purpose: the cheat sheet has to name it
+    blessing_chance: float = 0.6
     # What this biome's builder can actually produce. Only the cavern builder
     # grows pools, so a biome that wants water has to use it - the field
     # describes the terrain, it does not request it.
@@ -55,6 +60,8 @@ BIOMES: tuple[Biome, ...] = (
         params={"min_partition": 12, "min_room": 4},
         monsters=("r", "g", "o", "O"),
         weight=1.2,
+        shrine="a mason's mark",
+        blessing_chance=0.65,
     ),
     Biome(
         "caves",
@@ -63,6 +70,8 @@ BIOMES: tuple[Biome, ...] = (
         params={"fill_prob": 0.45, "smooth_steps": 4},
         monsters=("r", "g", "o", "O", "T"),
         weight=1.2,
+        shrine="a cairn",
+        blessing_chance=0.6,
     ),
     Biome(
         "caverns",
@@ -71,6 +80,8 @@ BIOMES: tuple[Biome, ...] = (
         params={"fill_prob": 0.42, "smooth_steps": 5},
         liquids="both",
         weight=1.0,
+        shrine="a dripping idol",
+        blessing_chance=0.55,
     ),
     Biome(
         "ashfields",
@@ -90,6 +101,8 @@ BIOMES: tuple[Biome, ...] = (
         monsters=("o", "O", "T", "D"),
         liquids="lava",
         weight=0.7,
+        shrine="a scorched effigy",
+        blessing_chance=0.4,
     ),
     Biome(
         "ossuary",
@@ -99,6 +112,8 @@ BIOMES: tuple[Biome, ...] = (
         params={"min_partition": 7, "min_room": 2},
         monsters=("r", "g", "T"),
         weight=0.8,
+        shrine="a bone pillar",
+        blessing_chance=0.3,
     ),
     Biome(
         "warren",
@@ -118,6 +133,8 @@ BIOMES: tuple[Biome, ...] = (
         monsters=("r", "g", "o"),
         liquids="water",
         weight=0.9,
+        shrine="a fruiting totem",
+        blessing_chance=0.6,
     ),
     Biome(
         "ruins",
@@ -126,6 +143,8 @@ BIOMES: tuple[Biome, ...] = (
         params={"min_partition": 11, "min_room": 3, "fill_prob": 0.44, "smooth_steps": 3},
         monsters=("r", "g", "o", "T"),
         weight=1.0,
+        shrine="a toppled saint",
+        blessing_chance=0.6,
     ),
     Biome(
         "marsh",
@@ -143,6 +162,8 @@ BIOMES: tuple[Biome, ...] = (
         monsters=("r", "g", "o", "O"),
         liquids="water",
         weight=0.9,
+        shrine="a rusted shrine",
+        blessing_chance=0.45,
     ),
     Biome(
         "crystal",
@@ -152,6 +173,8 @@ BIOMES: tuple[Biome, ...] = (
         params={"fill_prob": 0.47, "smooth_steps": 8},
         monsters=("g", "o", "O", "T", "D"),
         weight=0.6,
+        shrine="a singing shard",
+        blessing_chance=0.7,
     ),
     Biome(
         "frozen",
@@ -165,6 +188,8 @@ BIOMES: tuple[Biome, ...] = (
         },
         monsters=("r", "g", "o", "T", "D"),
         weight=0.8,
+        shrine="a rimed effigy",
+        blessing_chance=0.45,
     ),
     Biome(
         "spores",
@@ -177,6 +202,8 @@ BIOMES: tuple[Biome, ...] = (
         },
         monsters=("r", "g", "o", "O"),
         weight=0.7,
+        shrine="a spore-caked totem",
+        blessing_chance=0.4,
     ),
     Biome(
         "sunken",
@@ -186,6 +213,8 @@ BIOMES: tuple[Biome, ...] = (
         monsters=("r", "g", "o", "T"),
         liquids="water",
         weight=0.6,
+        shrine="a drowned altar",
+        blessing_chance=0.5,
     ),
     Biome(
         "station",
@@ -194,6 +223,8 @@ BIOMES: tuple[Biome, ...] = (
         params={"cell": 11, "door_chance": 0.62, "sealed_chance": 0.16},
         monsters=("x", "S", "C", "W"),
         weight=0.9,
+        shrine="a dead terminal",
+        blessing_chance=0.55,
     ),
     Biome(
         "machine",
@@ -202,6 +233,8 @@ BIOMES: tuple[Biome, ...] = (
         params={"braid": 0.3},
         monsters=("x", "S", "C", "W"),
         weight=0.6,
+        shrine="a humming pillar",
+        blessing_chance=0.5,
     ),
     Biome(
         "weave",
@@ -210,6 +243,8 @@ BIOMES: tuple[Biome, ...] = (
         params={"period": 6, "gap_chance": 0.3},
         monsters=("x", "S", "C", "W", "D"),
         weight=0.5,
+        shrine="a knot in the weave",
+        blessing_chance=0.5,
     ),
 )
 

@@ -86,6 +86,7 @@ def hud_lines(
     if biome is not None:
         key, label = biome
         lines.append((f"biome  {label}", _biome_color(key, config)))
+    lines.extend(effect_lines(agent, config))
     lines.append(("", config.hud_color))
     lines.append(
         (
@@ -121,6 +122,25 @@ def hud_lines(
 
 
 _BIOME_LABEL_FLOOR = 190  # dimmest a label's strongest channel may be
+
+
+def effect_lines(agent, config) -> list[Line]:
+    """What is currently true of the creature that will not be true for long.
+
+    Blessings read good and curses read bad, because the whole point of a
+    totem is that you can tell from across the room which one it gave you.
+    The countdown is there so a watcher can see it running out.
+    """
+    from sim.effects import describe
+
+    running = describe(getattr(agent, "effects", {}) or {})
+    if not running:
+        return []
+    lines: list[Line] = []
+    for label, blessing, left in running:
+        colour = config.hud_good_color if blessing else config.hud_bad_color
+        lines.append((f" {label:<11} {left // 10:>4}", colour))
+    return lines
 
 
 def _biome_color(key: str, config) -> tuple[int, int, int]:
