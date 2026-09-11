@@ -186,3 +186,59 @@ def test_the_hosted_game_records_the_dead_unless_told_not_to(tmp_path):
         import web.app
 
         importlib.reload(web.app)
+
+
+def test_the_hall_goes_on_a_mounted_volume_when_there_is_one(tmp_path):
+    """A volume is the one place on a hosted box that outlives a deploy.
+
+    It is conventionally mounted at /data, so finding one there and using it
+    saves wiring up an environment variable to say the obvious thing.
+    """
+    import pytest
+
+    pytest.importorskip("fastapi")
+    from web.app import default_hall_path
+
+    mounted = tmp_path / "data"
+    mounted.mkdir()
+
+    assert default_hall_path(mounted) == mounted / "hall_of_fame.json"
+
+
+def test_without_a_volume_the_hall_sits_beside_the_game(tmp_path):
+    """Which is what a laptop wants, and what a host without one gets."""
+    import pytest
+
+    pytest.importorskip("fastapi")
+    from web.app import default_hall_path
+
+    chosen = default_hall_path(tmp_path / "nothing-mounted-here")
+
+    assert chosen.parent.name == "data"
+    assert chosen.parent.parent.name == "AsciiCrawler"
+
+
+def test_an_explicit_path_still_wins():
+    import importlib
+    import os
+
+    import pytest
+
+    pytest.importorskip("fastapi")
+
+    was = os.environ.get("CRAWLER_HALL_PATH")
+    os.environ["CRAWLER_HALL_PATH"] = "/somewhere/else/hall.json"
+    try:
+        import web.app
+
+        importlib.reload(web.app)
+        assert web.app.HALL_PATH.name == "hall.json"
+        assert "else" in str(web.app.HALL_PATH)
+    finally:
+        if was is None:
+            os.environ.pop("CRAWLER_HALL_PATH", None)
+        else:
+            os.environ["CRAWLER_HALL_PATH"] = was
+        import web.app
+
+        importlib.reload(web.app)

@@ -82,7 +82,7 @@ nothing.
 | `CRAWLER_SEED` | which world to start on | a fresh one each boot, logged |
 | `CRAWLER_HUD_CHARS` | width the side panel is clipped to | 46 |
 | `CRAWLER_NEW_WORLD_ON_DEATH` | `0` to stay in the same dungeon after a death | on |
-| `CRAWLER_HALL_PATH` | where to keep the hall of fame | `data/hall_of_fame.json` |
+| `CRAWLER_HALL_PATH` | where to keep the hall of fame | a volume at `/data`, else `data/` |
 | `CRAWLER_HALL` | `0` to stop recording the dead | on |
 
 The page scales the grid to whatever room the browser gives it, so the same
@@ -116,11 +116,12 @@ per process, so do not run multiple workers — each would be a different
 world, and viewers would land on whichever one answered.
 
 **Keeping the hall of fame.** The dead are recorded by default, and the
-folder is made if it is not there. How long they last is the host's business:
-left alone they live in `data/` and survive as long as the container's own
-filesystem does, which on most platforms means until the next deploy. Point
-`CRAWLER_HALL_PATH` at a file on a mounted volume and they outlive deploys
-too — they are the only thing here that outlives its world.
+folder is made if it is not there. Mount a volume at `/data` and they are
+kept on it without any further wiring — that is the one place on a hosted box
+that outlives a deploy. Without one they sit in `data/` beside the game and
+last as long as the container's filesystem does. `CRAWLER_HALL_PATH` overrides
+both; the chosen path is logged at startup, so a volume that is mounted but
+not writable says so rather than quietly forgetting everybody.
 
 See [CHANGELOG.md](CHANGELOG.md) for what is in this release.
 

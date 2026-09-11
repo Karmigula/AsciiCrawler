@@ -8,7 +8,8 @@ Press <kbd>h</kbd> on the site to open it and <kbd>h</kbd> again to shut it, or 
 fetched when the overlay opens rather than carried on every frame: a life
 ends rarely and a frame goes out a dozen times a second to everybody.
 
-The dead are recorded by default now. They shipped switched off, which was
+A volume mounted at `/data` is used for the hall without any wiring. The dead
+are recorded by default now. They shipped switched off, which was
 right for a host that wipes its disk on every deploy and wrong everywhere
 else — a scoreboard nobody turned on is a scoreboard nobody sees. Point
 `CRAWLER_HALL_PATH` at a mounted volume and they outlive deploys as well.

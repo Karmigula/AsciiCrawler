@@ -103,9 +103,23 @@ HUD_CHARS = _env_int("CRAWLER_HUD_CHARS", 46)
 # How long it lasts is the host's business rather than ours. Point
 # CRAWLER_HALL_PATH at a mounted volume and the dead outlive deploys too;
 # leave it and they last as long as the container's own filesystem does.
-HALL_PATH = Path(
-    os.environ.get("CRAWLER_HALL_PATH", Path(__file__).parent.parent / "data" / "hall_of_fame.json")
-)
+def default_hall_path(mount=Path("/data")) -> Path:
+    """Where to keep the dead when nobody has said.
+
+    A mounted volume is the one place on a hosted box that outlives a deploy,
+    and it is conventionally at /data - so if something is mounted there and
+    we can write to it, the hall goes there without anyone having to wire it
+    up. Otherwise it sits beside the game, which is right for a laptop.
+    """
+    try:
+        if mount.is_dir() and os.access(mount, os.W_OK):
+            return mount / "hall_of_fame.json"
+    except OSError:  # a path we are not allowed to even ask about
+        pass
+    return Path(__file__).parent.parent / "data" / "hall_of_fame.json"
+
+
+HALL_PATH = Path(os.environ.get("CRAWLER_HALL_PATH") or default_hall_path())
 KEEP_HALL = os.environ.get("CRAWLER_HALL", "1") != "0"
 # The desktop defaults to staying in the same dungeon after a death, so the
 # next life can walk back for its own gear. Watching a stream, a death is the
@@ -263,6 +277,12 @@ async def lifespan(app: FastAPI):
     _speak_through_uvicorn()
     seed = starting_seed()
     log.info("opening on world seed %s", seed)
+    # Which hall was chosen is worth saying: a volume that is mounted but not
+    # writable falls back silently, and the symptom of that is a scoreboard
+    # that quietly forgets every deploy.
+    log.info(
+        "hall of fame: %s", HALL_PATH if KEEP_HALL else "not recording the dead"
+    )
     app.state.session = Session(
         replace(DEFAULT_CONFIG, new_world_on_death=NEW_WORLD_ON_DEATH),
         seed=seed,
