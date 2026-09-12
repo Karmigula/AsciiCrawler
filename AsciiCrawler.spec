@@ -57,7 +57,12 @@ exe = EXE(
     # a windowed build has no stdout, and printing to it would otherwise take
     # the game down over something as small as a typo in a pack manifest.
     console=False,
-    disable_windowed_traceback=False,
+    # A windowed build that raises on startup otherwise pops a modal dialog
+    # nobody can see and waits for someone to click it. On a build runner that
+    # is a hang; on a player's machine it is a game that never opens and never
+    # says why. With this the process dies and writes the traceback to stderr,
+    # which is where `tools/check_release.py` is already looking.
+    disable_windowed_traceback=True,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,

@@ -27,9 +27,14 @@ jobs:
           python-version: "3.12"
 
       - name: Install what the game and the builder need
+        # From requirements.txt, not a hand-written list. The hand-written one
+        # said `pygame-ce pyinstaller` and forgot numpy, which every chunk in
+        # the game is made of - so the build succeeded and produced an exe
+        # that died on its first import. The file that already knows the
+        # answer is the one to ask.
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pygame-ce pyinstaller
+          python -m pip install -r requirements.txt pyinstaller
 
       # Generated rather than committed, so the release always ships art that
       # matches the code that draws it.
