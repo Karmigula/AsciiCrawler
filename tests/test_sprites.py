@@ -274,28 +274,53 @@ def test_the_starter_pack_covers_the_ground_and_the_living_things():
     assert pack.sprite_for("@") is not None, "the creature itself has no sprite"
 
 
-def test_the_starter_pack_still_leaves_plenty_as_letters():
-    """A pack need not be finished to be usable, and this one is not.
+def test_the_starter_pack_covers_every_glyph_the_game_draws():
+    """It is finished now, and this is what finished means.
 
-    Totems, stalls, graves, the gear on the floor and every named boss are
-    still letters, which is the demonstration that partial is normal rather
-    than an unfinished state somebody has to apologise for.
+    Built from the same registries the cheat sheet is, so a new monster, tile
+    or boss fails here until somebody draws it - which is the useful failure,
+    since the alternative is one lonely letter among the sprites that nobody
+    notices for a month.
     """
     from pathlib import Path
 
+    from config import DEFAULT_CONFIG
+    from render.legend import legend_sections
     from render.packs import load
-    from sim.bosses import BOSSES
+    from sim.spells import BOLT_GLYPHS
 
     folder = Path("packs/starter")
     if not (folder / "pack.json").is_file():
         pytest.skip("the starter pack has not been generated")
 
     pack = load(folder)
+    drawable = {
+        glyph for _heading, rows in legend_sections(DEFAULT_CONFIG) for glyph, _, _ in rows
+    } | set(BOLT_GLYPHS.values())
 
-    for glyph in ("&", "%", "+", ")", "[", "=", '"'):
-        assert pack.sprite_for(glyph) is None, f"{glyph} should still be a letter"
-    for boss in BOSSES:
-        assert pack.sprite_for(boss.glyph) is None, f"{boss.key} should be a letter"
+    missing = sorted(glyph for glyph in drawable if pack.sprite_for(glyph) is None)
+    assert not missing, f"the starter pack has no sprite for {missing}"
+
+
+def test_the_pack_invents_nothing_the_game_never_draws():
+    """The other direction: art for a glyph that cannot appear is dead weight."""
+    from pathlib import Path
+
+    from config import DEFAULT_CONFIG
+    from render.legend import legend_sections
+    from render.packs import load
+    from sim.spells import BOLT_GLYPHS
+
+    folder = Path("packs/starter")
+    if not (folder / "pack.json").is_file():
+        pytest.skip("the starter pack has not been generated")
+
+    pack = load(folder)
+    drawable = {
+        glyph for _heading, rows in legend_sections(DEFAULT_CONFIG) for glyph, _, _ in rows
+    } | set(BOLT_GLYPHS.values())
+
+    assert not sorted(set(pack.sprites) - drawable)
 
 
 def test_every_creature_has_its_own_silhouette():
@@ -308,6 +333,7 @@ def test_every_creature_has_its_own_silhouette():
 
     from render.packs import load
     from render.sprites import SpriteSheet
+    from sim.bosses import BOSSES
     from sim.monsters import MONSTERS
 
     folder = Path("packs/starter")
@@ -316,7 +342,10 @@ def test_every_creature_has_its_own_silhouette():
 
     sheet = SpriteSheet(load(folder), 16)
     shapes = {}
-    for glyph in [kind.glyph for kind in MONSTERS] + ["@"]:
+    everything = (
+        [kind.glyph for kind in MONSTERS] + [boss.glyph for boss in BOSSES] + ["@"]
+    )
+    for glyph in everything:
         art = sheet.for_glyph(glyph)
         # The silhouette alone: where the sprite is solid, ignoring brightness.
         mask = frozenset(

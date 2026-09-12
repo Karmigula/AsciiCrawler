@@ -63,9 +63,9 @@ whatever is in `packs/`, and `starter` ships with the game:
 .venv\Scripts\python.exe tools/make_starter_pack.py   # regenerate it
 ```
 
-`starter` covers the ground, the loot on it, every monster and the creature
-itself. Totems, stalls, gear on the floor and the named bosses are still
-letters — deliberately, as a working demonstration of the next paragraph.
+`starter` now covers everything the game draws: ground, gear, loot, props,
+spell bolts, all ten monsters, all twenty-one named bosses and the creature
+itself.
 
 **A pack does not have to cover everything.** Anything it leaves out is still
 drawn as a letter, per glyph, so a pack that only replaces walls is a
