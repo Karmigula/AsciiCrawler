@@ -10,6 +10,17 @@
     "_": "ice.png",
     "*": "haze.png",
     "$": "gold.png",
-    "!": "potion.png"
+    "!": "potion.png",
+    "@": "creature.png",
+    "r": "rat.png",
+    "x": "mite.png",
+    "g": "goblin.png",
+    "o": "orc.png",
+    "O": "ogre.png",
+    "T": "troll.png",
+    "D": "dragon.png",
+    "S": "sentry.png",
+    "C": "construct.png",
+    "W": "warden.png"
   }
 }

@@ -63,6 +63,10 @@ whatever is in `packs/`, and `starter` ships with the game:
 .venv\Scripts\python.exe tools/make_starter_pack.py   # regenerate it
 ```
 
+`starter` covers the ground, the loot on it, every monster and the creature
+itself. Totems, stalls, gear on the floor and the named bosses are still
+letters — deliberately, as a working demonstration of the next paragraph.
+
 **A pack does not have to cover everything.** Anything it leaves out is still
 drawn as a letter, per glyph, so a pack that only replaces walls is a
 perfectly good pack. The keys are glyphs — the same ones <kbd>j</kbd> lists in
@@ -93,6 +97,8 @@ packs/mossy/
 - `tinted` — greyscale art, multiplied by the colour the cell already had. Fog,
   the biome wash and the debug overlays all keep working without the pack
   knowing they exist. This is the default, and what the starter pack uses.
+  Draw for it near white: the tint does the darkening, so art that already
+  looks right on its own comes out nearly black on a dark floor.
 - `full` — the art keeps its own colours, and is only dimmed for ground the
   creature is remembering rather than looking at.
 

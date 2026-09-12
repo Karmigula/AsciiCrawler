@@ -254,12 +254,12 @@ def test_the_starter_pack_redraws_a_real_frame():
     assert changed > len(as_letters) // 2, f"only {changed} pixels changed"
 
 
-def test_the_starter_pack_leaves_the_living_things_alone():
-    """It covers ground and loot. Monsters and the creature stay as letters,
-    which is the demonstration that a partial pack is a normal pack."""
+def test_the_starter_pack_covers_the_ground_and_the_living_things():
     from pathlib import Path
 
     from render.packs import load
+    from sim.monsters import MONSTERS
+    from world.tiles import Tile
 
     folder = Path("packs/starter")
     if not (folder / "pack.json").is_file():
@@ -267,6 +267,70 @@ def test_the_starter_pack_leaves_the_living_things_alone():
 
     pack = load(folder)
 
-    assert pack.sprite_for("#") is not None
-    for glyph in ("@", "r", "T", "&", "%"):
+    for tile in Tile:
+        assert pack.sprite_for(tile.glyph) is not None, f"{tile.name} has no sprite"
+    for kind in MONSTERS:
+        assert pack.sprite_for(kind.glyph) is not None, f"{kind.key} has no sprite"
+    assert pack.sprite_for("@") is not None, "the creature itself has no sprite"
+
+
+def test_the_starter_pack_still_leaves_plenty_as_letters():
+    """A pack need not be finished to be usable, and this one is not.
+
+    Totems, stalls, graves, the gear on the floor and every named boss are
+    still letters, which is the demonstration that partial is normal rather
+    than an unfinished state somebody has to apologise for.
+    """
+    from pathlib import Path
+
+    from render.packs import load
+    from sim.bosses import BOSSES
+
+    folder = Path("packs/starter")
+    if not (folder / "pack.json").is_file():
+        pytest.skip("the starter pack has not been generated")
+
+    pack = load(folder)
+
+    for glyph in ("&", "%", "+", ")", "[", "=", '"'):
         assert pack.sprite_for(glyph) is None, f"{glyph} should still be a letter"
+    for boss in BOSSES:
+        assert pack.sprite_for(boss.glyph) is None, f"{boss.key} should be a letter"
+
+
+def test_every_creature_has_its_own_silhouette():
+    """Colour is already spoken for: a monster is tinted by how dangerous it is.
+
+    So two creatures that differ only in colour are the same creature on
+    screen, and the shapes have to carry the identity by themselves.
+    """
+    from pathlib import Path
+
+    from render.packs import load
+    from render.sprites import SpriteSheet
+    from sim.monsters import MONSTERS
+
+    folder = Path("packs/starter")
+    if not (folder / "pack.json").is_file():
+        pytest.skip("the starter pack has not been generated")
+
+    sheet = SpriteSheet(load(folder), 16)
+    shapes = {}
+    for glyph in [kind.glyph for kind in MONSTERS] + ["@"]:
+        art = sheet.for_glyph(glyph)
+        # The silhouette alone: where the sprite is solid, ignoring brightness.
+        mask = frozenset(
+            (x, y)
+            for x in range(16)
+            for y in range(16)
+            if art.get_at((x, y))[3] > 40
+        )
+        assert len(mask) > 20, f"{glyph} is nearly empty"
+        for other, seen in shapes.items():
+            # Intersection over union, not over the smaller shape: a small
+            # figure standing inside a big blob's outline scores 94% by that
+            # measure while looking nothing like it, which is how this test
+            # first accused the creature of being an ogre.
+            overlap = len(mask & seen) / max(1, len(mask | seen))
+            assert overlap < 0.75, f"{glyph} and {other} are the same shape"
+        shapes[glyph] = mask
