@@ -97,12 +97,20 @@ def fog_grid(
     memory_tint: Color | None = None,
     fresh_tint: float = 0.0,
     stale_tint: float = 0.0,
+    shades_out: list | None = None,
 ) -> list[list[Cell | None]]:
     """Build the drawable grid: (glyph, color) per tile, None for nothing known.
 
     `rows` is a window whose top-left cell sits at world coordinate `origin`;
     `visible` and `known` are world-coordinate sets, matched against the window
     through that offset (default (0, 0) keeps local-coordinate rows working).
+
+    `shades_out`, when a list is handed in, is filled with one brightness per
+    cell alongside the grid. Fog is expressed as colour here, which is all an
+    ascii renderer needs; a texture pack drawing its own colours needs the
+    number that colour was made from. An out-parameter rather than a second
+    return value so every existing caller is untouched, and rather than a
+    second pass so the tier is worked out exactly once.
 
     `color_for(glyph, coord)` overrides the flat palette when terrain colour
     depends on where the tile is - biome shading needs the coordinate, not just
@@ -117,6 +125,7 @@ def fog_grid(
     grid: list[list[Cell | None]] = []
     for y, line in enumerate(rows):
         cells: list[Cell | None] = []
+        shades: list[float] = []
         for x, glyph in enumerate(line):
             coord = (x + origin_x, y + origin_y)
             tier = tier_for(
@@ -130,6 +139,7 @@ def fog_grid(
             )
             if tier in (UNKNOWN, EXPIRED):
                 cells.append(None)
+                shades.append(0.0)
                 continue
             factor = {VISIBLE: 1.0, FRESH: remembered_factor, STALE: stale}[tier]
             tint = {VISIBLE: 0.0, FRESH: fresh_tint, STALE: stale_tint}[tier]
@@ -157,5 +167,8 @@ def fog_grid(
             if memory_tint is not None and tint > 0.0:
                 base = _toward(base, memory_tint, tint)
             cells.append((draw, base if factor == 1.0 else shade(base, factor)))
+            shades.append(factor)
         grid.append(cells)
+        if shades_out is not None:
+            shades_out.append(shades)
     return grid

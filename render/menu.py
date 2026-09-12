@@ -201,6 +201,13 @@ def default_settings(config, max_workers: int) -> list[Setting]:
             index=_closest(washes, config.background_strength.get("visible", 0.44)),
         ),
         Setting(
+            "pack",
+            "textures",
+            "sprites for what a pack covers; letters for the rest",
+            _packs(config),
+            index=_pack_index(config),
+        ),
+        Setting(
             "moss",
             "moss",
             "cosmetic speckle on old stone",
@@ -208,6 +215,24 @@ def default_settings(config, max_workers: int) -> list[Setting]:
             index=0 if config.moss_chance > 0 else 1,
         ),
     ]
+
+
+def _packs(config) -> tuple:
+    """"ascii", then whatever is sitting in the pack folder.
+
+    Read at menu time rather than at import: somebody dropping a folder in
+    while the game is on the title screen should find it there when they open
+    the settings, without restarting anything.
+    """
+    from render.packs import discover
+
+    return ("ascii", *(folder.name for folder in discover(config.pack_dir)))
+
+
+def _pack_index(config) -> int:
+    names = _packs(config)
+    chosen = config.texture_pack or "ascii"
+    return names.index(chosen) if chosen in names else 0
 
 
 def _closest(values, target) -> int:
@@ -252,8 +277,10 @@ def apply_settings(settings: list[Setting], config):
     strengths["visible"] = visible
     strengths["fresh"] = round(visible * 0.6, 3)
     strengths["stale"] = round(visible * 0.34, 3)
+    pack = chosen.get("pack", "ascii")
     return replace(
         config,
+        texture_pack="" if pack == "ascii" else pack,
         background_strength=strengths,
         moss_chance=0.06 if chosen.get("moss", True) else 0.0,
         soak_workers=int(chosen.get("workers", config.soak_workers)),

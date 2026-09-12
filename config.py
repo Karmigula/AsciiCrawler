@@ -356,6 +356,12 @@ class Config:
     level_mp_gain: int = 4
     mp_regen_ticks: int = 25  # one point back every this many ticks
 
+    # Where texture packs live, and which one to draw with. Empty means
+    # letters, which is the default and always will be: a pack is something
+    # somebody adds, not something the game ships needing.
+    pack_dir: str = "packs"
+    texture_pack: str = ""
+
     spell_flash_ticks: int = 4
     spell_colors: dict = field(
         default_factory=lambda: {

@@ -55,6 +55,8 @@ class Screen:
         self._hud_font = self._load_font(config.font_size - 2)
         self._title_font = self._load_font(config.menu_title_font_size)
         self._glyph_cache: dict[tuple[str, Color], pygame.Surface] = {}
+        # No pack until somebody chooses one; `None` means draw letters.
+        self._sheet = None
         self._mode = WINDOWED
         self._windowed = (config.window_width, config.window_height)
         self._display_bounds = self._probe_display_bounds()
@@ -244,10 +246,25 @@ class Screen:
         """World cell at the top-left corner of the view for this camera."""
         return self._origin(camera_center)
 
+    def use_pack(self, pack) -> list:
+        """Draw with this texture pack from now on; returns any complaints.
+
+        Handing over a pack with nothing in it is how you go back to
+        letters, which is also what happens when nobody has chosen one.
+        """
+        from render.sprites import SpriteSheet
+
+        if pack is None or not len(pack):
+            self._sheet = None
+            return list(getattr(pack, "problems", []))
+        self._sheet = SpriteSheet(pack, self._config.cell_size)
+        return list(pack.problems)
+
     def draw_cells(
         self,
         cells: Sequence[Sequence[tuple[str, Color] | None]],
         backgrounds: Sequence[Sequence[Color | None]] | None = None,
+        shades: Sequence[Sequence[float]] | None = None,
     ) -> None:
         """Draw a cell window; None cells stay blank.
 
@@ -278,9 +295,11 @@ class Screen:
                         ),
                     )
         for row, line in enumerate(cells[: self._rows]):
+            faded = shades[row] if shades is not None and row < len(shades) else None
             for col, cell in enumerate(line[: self._cols]):
                 if cell is not None:
-                    self._blit_glyph(cell[0], col, row, cell[1])
+                    dim = faded[col] if faded is not None and col < len(faded) else 1.0
+                    self._blit_glyph(cell[0], col, row, cell[1], dim)
 
     def draw_glyph(
         self,
@@ -382,12 +401,36 @@ class Screen:
         cx, cy = camera_center
         return cx - self._cols // 2, cy - self._rows // 2
 
-    def _blit_glyph(self, glyph: str, col: int, row: int, color: Color) -> None:
-        surface = self._glyph_surface(glyph, color)
+    def _blit_glyph(
+        self, glyph: str, col: int, row: int, color: Color, dim: float = 1.0
+    ) -> None:
+        surface = self._sprite_surface(glyph, color, dim)
+        if surface is None:
+            surface = self._glyph_surface(glyph, color)
         cell = self._config.cell_size
         px = self._margin_x + col * cell + (cell - surface.get_width()) // 2
         py = self._margin_y + row * cell + (cell - surface.get_height()) // 2
         self._window.blit(surface, (px, py))
+
+    def _sprite_surface(self, glyph: str, color: Color, dim: float):
+        """The pack's picture for this glyph, drawn its way, or None.
+
+        Tinted art is multiplied by the cell colour, which is how a greyscale
+        pack inherits the fog tier, the biome wash and every overlay without
+        knowing any of them exist. Full-colour art keeps its own colours and
+        is only darkened, because a remembered wall should still look
+        remembered whatever is painted on it.
+        """
+        if self._sheet is None:
+            return None
+        from render import sprites
+
+        picture = self._sheet.for_glyph(glyph)
+        if picture is None:
+            return None
+        if self._sheet.mode_for(glyph) == "full":
+            return sprites.shade(picture, dim)
+        return sprites.tint(picture, color)
 
     def _glyph_surface(self, glyph: str, color: Color) -> pygame.Surface:
         key = (glyph, color)

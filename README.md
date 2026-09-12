@@ -54,6 +54,57 @@ numpy — note the `-ce`, since plain `pygame` is a rival fork that installs a
 module by the same name and the two do not belong in one environment.
 `requirements.txt` also carries uvicorn, which nothing imports yet.
 
+## Texture packs
+
+The window can draw sprites instead of letters. **Settings → textures** lists
+whatever is in `packs/`, and `starter` ships with the game:
+
+```
+.venv\Scripts\python.exe tools/make_starter_pack.py   # regenerate it
+```
+
+**A pack does not have to cover everything.** Anything it leaves out is still
+drawn as a letter, per glyph, so a pack that only replaces walls is a
+perfectly good pack. The keys are glyphs — the same ones <kbd>j</kbd> lists in
+the game, which makes the cheat sheet a list of everything you could
+retexture.
+
+```
+packs/mossy/
+  pack.json
+  wall.png  floor.png  rat.png
+```
+
+```json
+{
+  "name": "Mossy Stone",
+  "cell_size": 32,
+  "mode": "tinted",
+  "sprites": {
+    "#": "wall.png",
+    ".": "floor.png",
+    "r": { "file": "rat.png", "mode": "full" }
+  }
+}
+```
+
+**Two ways to draw**, per pack or per sprite:
+
+- `tinted` — greyscale art, multiplied by the colour the cell already had. Fog,
+  the biome wash and the debug overlays all keep working without the pack
+  knowing they exist. This is the default, and what the starter pack uses.
+- `full` — the art keeps its own colours, and is only dimmed for ground the
+  creature is remembering rather than looking at.
+
+Sprites are scaled to the cell size once and kept. A pack that is wrong —
+missing file, unparseable manifest, a key that is not one character — says so
+on the console and leaves those glyphs as letters. It cannot stop the game
+starting.
+
+Desktop only. The hosted version is always ASCII: sprites would mean shipping
+the art to every viewer, and the point of the browser build is that a frame is
+a few kilobytes.
+
 ## Watching it in a browser
 
 The hosted version lives at

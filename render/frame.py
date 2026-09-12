@@ -119,11 +119,14 @@ def build_frame(
     cols: int,
     rows: int,
     overlay: str | None = None,
+    shades_out: list | None = None,
 ) -> tuple[list, list, Sequence[str]]:
     """Return (cells, backgrounds, rows_text) for a window at `origin`.
 
     `cells` is (glyph, colour) or None per tile, shaded by what the agent
     remembers and how long ago; `backgrounds` is the matching biome wash.
+    `shades_out`, if given, is filled with the brightness behind each of those
+    colours - only a texture pack needs it, and only the window has one.
     Truth goes in, belief comes out - the window is built from `tile_at` and
     then dimmed through the same memory the brain plans on.
     """
@@ -149,6 +152,7 @@ def build_frame(
         memory_tint=config.memory_tint_color,
         fresh_tint=config.fresh_tint,
         stale_tint=config.stale_tint,
+        shades_out=shades_out,
     )
     cells = speckle_moss(cells, origin, Tile.FLOOR.glyph, config)
     cells = paint_bolts(cells, origin, agent)

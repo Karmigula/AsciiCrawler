@@ -1,0 +1,15 @@
+{
+  "name": "Starter",
+  "cell_size": 32,
+  "mode": "tinted",
+  "sprites": {
+    "#": "wall.png",
+    ".": "floor.png",
+    "~": "water.png",
+    "^": "lava.png",
+    "_": "ice.png",
+    "*": "haze.png",
+    "$": "gold.png",
+    "!": "potion.png"
+  }
+}

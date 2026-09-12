@@ -60,6 +60,7 @@ from render.menu import (
 )
 from sim import hall
 from render.legend import legend_lines
+from render.packs import EMPTY, load as load_pack
 from render.overlays import OVERLAY_NAMES
 from render.screen import Screen
 from sim.session import should_restart
@@ -74,6 +75,25 @@ _OVERLAY_KEYS = {
     pygame.K_F4: OVERLAY_NAMES[3],
     pygame.K_F5: OVERLAY_NAMES[4],
 }
+
+
+def _dress(screen, config: Config) -> None:
+    """Put the chosen texture pack on the screen, or take it off.
+
+    Loaded on the way in and again whenever the setting changes, because a
+    pack is a folder somebody can edit while the game is running and the
+    friendliest time to find out it is broken is immediately.
+
+    Anything wrong with it is printed and then ignored: the glyphs it got
+    right are drawn and the rest stay as letters, which is the same rule that
+    applies to a pack that simply does not mention them.
+    """
+    if not config.texture_pack:
+        screen.use_pack(EMPTY)
+        return
+    pack = load_pack(Path(config.pack_dir) / config.texture_pack)
+    for problem in screen.use_pack(pack):
+        print(f"texture pack: {problem}")
 
 
 def _new_world(config: Config, seed: int):
@@ -103,6 +123,7 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
     settings = default_settings(config, available_workers())
     apply_stored(settings, settings_store.load_values())
     config = apply_settings(settings, config)
+    _dress(screen, config)
     speed_index = _speed_index_for(settings, config)
     soak_results = None
     soaking = False
@@ -213,6 +234,7 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
                         adjust(settings, setting_selected, step)
                         config = apply_settings(settings, config)
                         speed_index = _speed_index_for(settings, config)
+                        _dress(screen, config)
                         settings_store.save_values(stored_values(settings))
             screen.draw_centered(
                 settings_lines(settings, setting_selected, config), big_lines=5
@@ -326,10 +348,11 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
         camera = (agent.x, agent.y)
         origin = screen.camera_origin(camera)
         cols, rows = screen.view_dims
+        shades: list = []
         cells, backgrounds, _ = build_frame(
-            world, agent, config, origin, cols, rows, overlay
+            world, agent, config, origin, cols, rows, overlay, shades_out=shades
         )
-        screen.draw_cells(cells, backgrounds)
+        screen.draw_cells(cells, backgrounds, shades)
         screen.draw_glyph(
             config.agent_glyph, agent.x, agent.y, camera, config.agent_color
         )
