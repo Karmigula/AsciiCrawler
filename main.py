@@ -30,11 +30,13 @@ the same simulation run faster and not a different one.
 import random
 import sys
 from datetime import datetime
+
 from pathlib import Path
 
 import pygame
 
 from config import DEFAULT_CONFIG, Config
+from paths import FROZEN, beside, bundled, note
 from render.frame import boss_in_view, build_frame
 from render.hud import (
     bag_lines,
@@ -61,7 +63,7 @@ from render.menu import (
 )
 from sim import hall
 from render.legend import legend_rows
-from render.packs import EMPTY, load as load_pack
+from render.packs import EMPTY, discover, load as load_pack
 from render.overlays import OVERLAY_NAMES
 from render.screen import Screen
 from sim.session import should_restart
@@ -92,9 +94,9 @@ def _dress(screen, config: Config) -> None:
     if not config.texture_pack:
         screen.use_pack(EMPTY)
         return
-    pack = load_pack(Path(config.pack_dir) / config.texture_pack)
+    pack = load_pack(beside(config.pack_dir) / config.texture_pack)
     for problem in screen.use_pack(pack):
-        print(f"texture pack: {problem}")
+        note(f"texture pack: {problem}")
 
 
 def _new_world(config: Config, seed: int):
@@ -406,13 +408,81 @@ def _speed_index_for(settings, config: Config) -> int:
 
 
 def _save_screenshot(screen: Screen, config: Config, seed: int, agent: AgentState) -> None:
-    folder = Path(config.screenshot_dir)
+    # Beside the game: a screenshot saved inside a frozen build's temporary
+    # unpack folder would be deleted the moment the player closed the window.
+    folder = beside(config.screenshot_dir)
     folder.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     screen.screenshot(folder / f"crawler-{seed}-{agent.tick_count}-{stamp}.png")
 
 
+def self_check(config: Config = DEFAULT_CONFIG, report=None) -> int:
+    """Start everything, draw one frame, say what was found, and stop.
+
+    This is for the frozen build. The two things freezing breaks are the font
+    and the texture packs - both are found by path, and both fail quietly:
+    a missing font falls back to pygame's default and a missing pack folder
+    just means no packs in the settings screen. Neither crashes, so neither
+    would be noticed before somebody downloaded the zip.
+    """
+    screen = Screen(config)
+    world, agent, _rng = _new_world(config, config.world_seed)
+    origin = screen.camera_origin((agent.x, agent.y))
+    cols, rows = screen.view_dims
+    cells, backgrounds, _ = build_frame(world, agent, config, origin, cols, rows)
+    screen.draw_cells(cells, backgrounds)
+
+    font = bundled(config.font_path)
+    packs = sorted(folder.name for folder in discover(beside(config.pack_dir)))
+    drawn = sum(1 for line in cells for cell in line if cell is not None)
+
+    lines = [
+        f"frozen: {FROZEN}",
+        f"font: {font} {'found' if font.is_file() else 'MISSING'}",
+        f"packs: {beside(config.pack_dir)} -> {packs or 'none'}",
+        f"settings: {settings_store.DEFAULT_PATH}",
+        f"hall: {hall.DEFAULT_PATH}",
+        f"drew {drawn} cells",
+    ]
+    for line in lines:
+        note(line)
+    if report is not None:
+        # A windowed build has no stdout at all, so the only way it can tell
+        # anybody what it found is to write it down. `tools/check_release.py`
+        # hands in the path and reads this back.
+        try:
+            Path(report).write_text("\n".join(lines) + "\n", encoding="utf-8")
+        except OSError as reason:
+            note(f"could not write {report}: {reason}")
+            return 1
+
+    if not font.is_file():
+        return 1
+    if not packs:
+        return 1
+    # The three things the player owns have to be somewhere they can see and
+    # somewhere that survives the exe being replaced - which means beside it,
+    # never inside the temporary folder a frozen build unpacks itself into.
+    home = beside(".").resolve()
+    for owned in (settings_store.DEFAULT_PATH, hall.DEFAULT_PATH):
+        if Path(owned).resolve().parent != home:
+            note(f"{owned} is not beside the game")
+            return 1
+    # A freshly spawned creature has only its own field of view painted and
+    # the rest of the window is legitimately blank, so this is a floor on
+    # "something was drawn at all", not a fraction of the screen.
+    if drawn < 40:
+        return 1
+    return 0
+
+
 if __name__ == "__main__":
+    if "--check" in sys.argv:
+        # Used by the release workflow against the built exe. The optional
+        # path after it is where to write the report, because a windowed
+        # build has nowhere to print one.
+        rest = sys.argv[sys.argv.index("--check") + 1 :]
+        sys.exit(self_check(report=rest[0] if rest else None))
     if "--soak" in sys.argv:
         # Delegated rather than duplicated, and it says where the real entry
         # point is: worker processes re-import this module under Windows

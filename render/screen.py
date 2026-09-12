@@ -7,17 +7,16 @@ and never imports world/sim/agent modules.
 
 import os
 from collections.abc import Sequence
-from pathlib import Path
 
 import pygame
 
 from config import Config
+from paths import bundled
 from render.displays import monitor_rects
 
 Color = tuple[int, int, int]
 Position = tuple[int, int]
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
 
 def display_for_point(rects, x: int, y: int) -> int:
     """Index of the display containing a point, or the nearest one.
@@ -531,7 +530,7 @@ class Screen:
 
     def _load_font(self, size: int | None = None) -> pygame.font.Font:
         size = self._config.font_size if size is None else size
-        path = _REPO_ROOT / self._config.font_path
+        path = bundled(self._config.font_path)
         if path.is_file():
             return pygame.font.Font(str(path), size)
         return pygame.font.Font(None, size)

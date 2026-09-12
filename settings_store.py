@@ -13,7 +13,12 @@ first run; a corrupt one is not worth stopping a toy for. Both give defaults.
 import json
 from pathlib import Path
 
-DEFAULT_PATH = Path(__file__).resolve().parent / "settings.json"
+from paths import beside
+
+# Beside the game rather than inside it: a frozen build unpacks itself to a
+# temporary folder that is deleted on exit, so settings written there would
+# last exactly one session.
+DEFAULT_PATH = beside("settings.json")
 
 
 def load_values(path: Path | None = None) -> dict:

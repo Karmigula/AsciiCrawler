@@ -142,6 +142,59 @@ Desktop only. The hosted version is always ASCII: sprites would mean shipping
 the art to every viewer, and the point of the browser build is that a frame is
 a few kilobytes.
 
+## Releases
+
+There is a Windows build on the
+[releases page](https://github.com/Karmigula/AsciiCrawler/releases): unzip it
+and double-click `AsciiCrawler.exe`. No installer, no Python, nothing written
+outside the folder you unzipped.
+
+```
+AsciiCrawler/
+  AsciiCrawler.exe
+  packs/starter/      atlas.png  walls.png  pack.json
+  README.txt
+```
+
+The packs folder is **outside** the executable on purpose. A texture pack
+sealed inside it would be a texture pack nobody could replace, so the exe
+carries the code and the font, and reads packs from next to itself. Drop a
+folder with a `pack.json` in there and it appears in the settings screen.
+`settings.json`, `hall_of_fame.json` and screenshots are written beside the
+exe too — copy them across to keep your hall of fame when a new version comes
+out, or delete them to start clean.
+
+`paths.py` is what keeps the two halves straight: `bundled()` reads out of the
+executable, `beside()` reads next to it, and from source both are just the
+repository, so nothing moves for anybody running `python main.py`.
+
+**Building one.** Tag a version and push it — `.github/workflows/release.yml`
+builds on Windows, checks the result starts, and attaches the zip to the
+release:
+
+```
+git tag v1.0 && git push origin v1.0
+```
+
+The number lives in `version.py`, which is also what the title screen shows.
+Bumping it is the whole ritual: change it there, commit, tag `v<number>`,
+push the tag.
+
+By hand, which is the same steps:
+
+```
+.venv\Scripts\python.exe -m pip install pyinstaller
+.venv\Scripts\python.exe -m tools.make_starter_pack   # the art is generated
+.venv\Scripts\python.exe tools/make_release.py        # -> dist/*.zip
+.venv\Scripts\python.exe tools/check_release.py       # does it actually start
+```
+
+That last step is not ceremony. Freezing breaks exactly two things — finding
+the font and finding the packs — and both fail *quietly*: a missing font falls
+back to pygame's default and a missing packs folder just means an empty
+setting. So the built exe is run headless with `--check`, from a different
+working directory, and made to write down what it found.
+
 ## Watching it in a browser
 
 The hosted version lives at

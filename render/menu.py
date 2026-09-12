@@ -12,6 +12,9 @@ and `#` is the same character the walls are drawn with.
 
 from dataclasses import dataclass
 
+from paths import beside
+from version import VERSION
+
 Color = tuple[int, int, int]
 Line = tuple[str, Color]
 
@@ -126,6 +129,7 @@ def menu_lines(selected: int, seed: int, config, running: bool = False) -> list[
         lines.append((f"{marker} {label:<{_LABEL_WIDTH}}  {blurb}", colour))
 
     lines.append(("", config.menu_dim_color))
+    lines.append((f"version {VERSION}", config.menu_dim_color))
     lines.append((f"world seed {seed}", config.menu_dim_color))
     lines.append(("up/down choose    enter start    esc quit", config.menu_dim_color))
     lines.append(("F10 borderless    F11 fullscreen", config.menu_dim_color))
@@ -226,7 +230,7 @@ def _packs(config) -> tuple:
     """
     from render.packs import discover
 
-    return ("ascii", *(folder.name for folder in discover(config.pack_dir)))
+    return ("ascii", *(folder.name for folder in discover(beside(config.pack_dir))))
 
 
 def _pack_index(config) -> int:

@@ -15,7 +15,11 @@ import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-DEFAULT_PATH = Path(__file__).resolve().parent.parent / "hall_of_fame.json"
+from paths import beside
+
+# Next to the game, so the dead survive the executable being replaced by the
+# next release. The hosted build passes its own path; see `web/app.py`.
+DEFAULT_PATH = beside("hall_of_fame.json")
 LIMIT = 20
 
 

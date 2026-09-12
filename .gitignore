@@ -8,3 +8,8 @@ screenshots/
 settings.json
 hall_of_fame.json
 data/
+
+# Release builds. The zip goes on a GitHub release, not in the repository.
+build/
+dist/
+*.manifest
