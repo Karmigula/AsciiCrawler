@@ -141,14 +141,34 @@ def tick(agent: AgentState, world, rng: random.Random, config: Config) -> None:
             # rather than from `rng`: drawing from the tick's stream would
             # shift every roll after it, and a name should not move a monster.
             agent.name = names.name_for(getattr(world, "seed", 0), agent.deaths)
-    _touch_shrine(agent, world, rng, config)
-    _trade(agent, world, config)
     mind = _refresh_loadout(agent, config)
     world.ensure_loaded((agent.x, agent.y))
+    # The tick starts where the creature is standing, and that counts as
+    # covered ground even if it walks away this tick. A totem can be underfoot
+    # without having been crossed to get there - it spawned on it, or a gate
+    # put it there - and those are exactly the cases where nothing else will
+    # ever offer it a second chance. Movers add to this list rather than
+    # replacing it.
+    agent.crossed = [(agent.x, agent.y)]
     if not _cast(agent, world, rng, mind) and not _kite(agent, world, config):
         _act(agent, world, rng, config)
     _observe(agent, world, mind)
+    # These three all read `agent.crossed`, so they run together, after the
+    # move that fills it and before anything empties it. They used to sit at
+    # the top of the tick, which meant they read a list the previous tick had
+    # already cleared - so they only ever saw the tile underfoot, and the
+    # whole skid was invisible to them.
+    #
+    # That cost the creature every totem and every stall standing on ice. It
+    # cannot stop on a drift, so crossing is the only visit it will ever
+    # manage; LOOT went on aiming at one it could never reach, physics went on
+    # sliding it past, and the two of them kept it there. One world spent
+    # eight thousand ticks skidding back and forth across the same effigy
+    # without once asking it anything.
     _pick_up(agent, world, config)
+    _touch_shrine(agent, world, rng, config)
+    _trade(agent, world, config)
+    agent.crossed = []
     _quaff(agent, config)
     _burn(agent, world, config)
     _choke(agent, world, config)
@@ -439,7 +459,7 @@ def _kite(agent: AgentState, world, config: Config) -> bool:
     if away is None:
         return False  # cornered: turn and fight
     agent.x, agent.y = away
-    agent.crossed = [away, *_slide(agent, away[0] - here[0], away[1] - here[1], world, config)]
+    agent.crossed += [away, *_slide(agent, away[0] - here[0], away[1] - here[1], world, config)]
     _spring_trap(agent, world, config)
     agent.explorer.drop_plan()
     agent.looter.clear()
@@ -601,7 +621,10 @@ def _uninteresting(agent: AgentState) -> set:
 
 
 def _trade(agent: AgentState, world, config: Config) -> None:
-    """Buy one thing, if standing at a stall and anything there is worth it.
+    """Buy one thing, if it reached a stall and anything there is worth it.
+
+    Reached rather than stopped at, for the reason totems are: a stall on ice
+    is a stall the creature can only ever skid past.
 
     One purchase per visit: the creature works out which single buy leaves it
     best off and takes that. Buying twice would need it to re-plan around
@@ -643,7 +666,12 @@ def _trade(agent: AgentState, world, config: Config) -> None:
 
 
 def _touch_shrine(agent: AgentState, world, rng: random.Random, config: Config) -> None:
-    """Standing on a totem is asking it a question. It answers once.
+    """Reaching a totem is asking it a question. It answers once.
+
+    Reaching, not standing on: every tile the agent covered this tick counts,
+    the same rule loot goes by. A totem on a drift cannot be stood on at all,
+    so if the skid did not count the creature could want one its whole life
+    and never once ask it anything.
 
     Rolled here rather than when the chunk was built, so walking over to one
     is a decision made under real uncertainty: the agent cannot know whether
@@ -688,6 +716,10 @@ def _pick_up(agent: AgentState, world, config: Config) -> None:
     Scooping it up in passing is also the better answer than refusing to go
     for it. Skidding across the ice and coming away with something is exactly
     what the terrain should feel like.
+
+    The list is not cleared here. Totems and stalls read it too, and this pass
+    emptying it was how they came to be blind to the skid; `tick` clears it
+    once, after all three have had it.
     """
     take = getattr(world, "take_item", None)
     peek = getattr(world, "item_at", None)
@@ -695,7 +727,6 @@ def _pick_up(agent: AgentState, world, config: Config) -> None:
         return
     for coord in agent.crossed or [(agent.x, agent.y)]:
         _take_one(agent, world, config, coord, take, peek)
-    agent.crossed = []
 
 
 def gold_in(coord, seed: int, config: Config) -> int:
@@ -911,7 +942,7 @@ def _try_step(
             _kill(agent, monster, world, rng, config)
         return ATTACKED
     agent.x, agent.y = nxt
-    agent.crossed = [nxt, *_slide(agent, dx, dy, world, config)]
+    agent.crossed += [nxt, *_slide(agent, dx, dy, world, config)]
     _spring_trap(agent, world, config)
     return MOVED
 

@@ -968,3 +968,153 @@ def test_fleeing_still_happens_when_there_is_somewhere_to_go():
     tick(agent, world, rng, DEFAULT_CONFIG)
     assert agent.fleer.active
     assert agent.fleer.path, "open ground: there is somewhere calmer to go"
+
+
+class ShrineWorld(PopulatedWorld):
+    """A world with totems and stalls on it, answered the way a chunk store does."""
+
+    def __init__(self, tiles, shrines=None, stalls=None, **rest) -> None:
+        super().__init__(tiles, **rest)
+        self.shrines = list(shrines or [])
+        self.stalls = list(stalls or [])
+
+    def shrine_at(self, x, y):
+        for shrine in self.shrines:
+            if (shrine.x, shrine.y) == (x, y):
+                return shrine
+        return None
+
+    def stall_at(self, x, y):
+        for stall in self.stalls:
+            if (stall.x, stall.y) == (x, y):
+                return stall
+        return None
+
+
+def _drift_field(width=96, height=54, drift=(), row=27):
+    """An open field with a band of ice laid across one row."""
+    tiles = _open_field(width, height)
+    for x in drift:
+        tiles[row][x] = Tile.ICE
+    return tiles
+
+
+def test_a_totem_on_a_drift_is_touched_in_passing():
+    """The creature cannot stop on ice, so touching has to happen mid-skid.
+
+    This is the frozen-deep loop: a totem sitting on a slide-through tile is
+    something LOOT will aim at forever and physics will never let it stand on.
+    Skidding over it has to count, or the creature asks the same question of
+    the same totem until the world is rotated out from under it.
+    """
+    from world.populate import Shrine
+
+    shrine = Shrine(x=40, y=27, kind="a rimed effigy", glyph="&")
+    # Ice at 39..41, floor either side: stepping east from 38 lands at 42 and
+    # crosses the totem on the way, which is the only way past it.
+    world = ShrineWorld(_drift_field(drift=(39, 40, 41)), shrines=[shrine])
+    agent = AgentState(x=38, y=27)
+    agent.looter.path = [(39, 27), (40, 27)]
+    agent.looter.target = (40, 27)
+
+    tick(agent, world, random.Random(1), DEFAULT_CONFIG)
+
+    assert (agent.x, agent.y) == (42, 27), "the drift should have carried it past"
+    assert shrine.spent, "it skidded over the totem without asking it anything"
+    assert (40, 27) in agent.spent_shrines
+
+
+def test_a_stall_on_a_drift_is_traded_with_in_passing():
+    """Same rule for shops: the skid is the only visit it will ever manage."""
+    from sim.items import ITEMS
+    from sim.shop import Offer
+    from world.populate import Item, Stall
+
+    kind = next(k for k in ITEMS if k.slot is not None)
+    stall = Stall(x=40, y=27, offers=[Offer(Item(kind=kind, x=40, y=27), 1)])
+    world = ShrineWorld(_drift_field(drift=(39, 40, 41)), stalls=[stall])
+    agent = AgentState(x=38, y=27)
+    agent.gold = 500
+    agent.looter.path = [(39, 27), (40, 27)]
+
+    tick(agent, world, random.Random(1), DEFAULT_CONFIG)
+
+    assert (agent.x, agent.y) == (42, 27)
+    # Either it bought something or it decided it did not want to - both are
+    # answers. Never being asked is the bug.
+    assert agent.purchases == 1 or (40, 27) in agent.declined_stalls
+
+
+def test_crossing_is_not_thrown_away_before_everything_has_looked_at_it():
+    """`agent.crossed` is read by three passes; none of them may eat it early.
+
+    The loop this fixes came from `_pick_up` clearing the list at the end of a
+    tick while the totem and stall passes ran at the *start* of the next one,
+    so those two only ever saw the tile the creature was standing on and the
+    whole skid was invisible to them.
+
+    The list covers both halves of "ground the creature dealt with this tick":
+    the tile it began on, which it may be walking off but was standing on all
+    the same, and every tile the move carried it over.
+    """
+    import sim.tick as tickmod
+
+    watched = ("_touch_shrine", "_trade", "_pick_up")
+    originals = {name: getattr(tickmod, name) for name in watched}
+    seen: dict = {}
+
+    def spy_for(name, real):
+        def spy(*args):
+            seen.setdefault(name, []).append(list(args[0].crossed))
+            return real(*args)
+
+        return spy
+
+    world = ShrineWorld(_drift_field(drift=(39, 40, 41)))
+    agent = AgentState(x=38, y=27)
+    agent.looter.path = [(39, 27), (40, 27)]
+    for name, real in originals.items():
+        setattr(tickmod, name, spy_for(name, real))
+    try:
+        tick(agent, world, random.Random(1), DEFAULT_CONFIG)
+    finally:
+        for name, real in originals.items():
+            setattr(tickmod, name, real)
+
+    covered = [(38, 27), (39, 27), (40, 27), (41, 27), (42, 27)]
+    for name in watched:
+        assert seen.get(name), f"{name} never ran"
+        assert seen[name][-1] == covered, (
+            f"{name} saw {seen[name][-1]} instead of {covered}"
+        )
+
+
+def test_a_totem_underfoot_is_asked_even_if_the_creature_walks_away():
+    """Arriving is not the only way to end up standing on one.
+
+    A gate can put the creature on a tile and a world can spawn it on one, and
+    in neither case was that tile ever "crossed" to get there. Moving the totem
+    and stall passes to after the move fixed the skid and broke exactly this,
+    so it is pinned here: the tile a tick begins on counts as covered too.
+
+    The creature has to actually leave for this to test anything - on its very
+    first tick it has no memory, believes nothing passable and so cannot move,
+    which made the first version of this test pass against the bug it was
+    written to catch.
+    """
+    from world.populate import Shrine
+
+    world = ShrineWorld(_open_field())
+    agent = AgentState(x=20, y=20)
+    tick(agent, world, random.Random(1), DEFAULT_CONFIG)  # look around first
+
+    shrine = Shrine(x=agent.x, y=agent.y, kind="a pillar", glyph="&")
+    world.shrines.append(shrine)
+    standing = (agent.x, agent.y)
+    agent.crossed = []  # as a gate leaves it: on a tile it never crossed to
+
+    tick(agent, world, random.Random(1), DEFAULT_CONFIG)
+
+    assert (agent.x, agent.y) != standing, "it has to leave, or this proves nothing"
+    assert shrine.spent, "it stood on the totem and never asked it anything"
+    assert standing in agent.spent_shrines
