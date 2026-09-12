@@ -350,10 +350,19 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
         origin = screen.camera_origin(camera)
         cols, rows = screen.view_dims
         shades: list = []
+        biomes: list = []
         cells, backgrounds, _ = build_frame(
-            world, agent, config, origin, cols, rows, overlay, shades_out=shades
+            world,
+            agent,
+            config,
+            origin,
+            cols,
+            rows,
+            overlay,
+            shades_out=shades,
+            biomes_out=biomes,
         )
-        screen.draw_cells(cells, backgrounds, shades)
+        screen.draw_cells(cells, backgrounds, shades, biomes)
         screen.draw_glyph(
             config.agent_glyph, agent.x, agent.y, camera, config.agent_color
         )

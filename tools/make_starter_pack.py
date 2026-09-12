@@ -11,6 +11,12 @@ renderer falls back to letters glyph by glyph - it is just what this one
 grew into. Each sprite is one short function, so the useful way to read this
 file is to find the thing you want to replace and copy that function.
 
+They come out as two sheets rather than fifty-one files, because nothing in
+this game is animated: one picture per glyph, so a grid with an index per
+glyph says everything a folder of files did. The walls get their own sheet
+(`tools/wall_art.py` draws them), one cell per biome, since rock is the glyph
+a pack most wants fifteen versions of.
+
 Everything here is greyscale, because greyscale is what `tinted` mode wants.
 The renderer multiplies each sprite by the colour the cell already had, so
 these shapes inherit the biome wash, the fog tier and any overlay without
@@ -32,6 +38,8 @@ from pathlib import Path
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
 import pygame  # noqa: E402
+
+from tools.wall_art import WALLS  # noqa: E402
 
 SIZE = 32
 HERE = Path(__file__).resolve().parent.parent / "packs" / "starter"
@@ -723,25 +731,74 @@ SPRITES = {
 }
 
 
+ATLAS_COLUMNS = 8
+WALL_COLUMNS = 5
+
+
+def _sheet(pictures, columns: int):
+    """Lay pictures out left to right, top to bottom, on one surface.
+
+    An atlas rather than a folder of files because nothing here is animated,
+    so there is no reason for the loader to open fifty-one files to draw one
+    frame - and a sheet is one thing to open in an editor when you want to
+    see what a pack looks like.
+    """
+    rows = -(-len(pictures) // columns)
+    sheet = pygame.Surface((columns * SIZE, rows * SIZE), pygame.SRCALPHA)
+    for index, art in enumerate(pictures):
+        sheet.blit(art, ((index % columns) * SIZE, (index // columns) * SIZE))
+    return sheet
+
+
 def main() -> None:
     pygame.init()
     pygame.display.set_mode((SIZE, SIZE))
     HERE.mkdir(parents=True, exist_ok=True)
 
-    for glyph, (name, draw) in SPRITES.items():
-        pygame.image.save(draw(), str(HERE / name))
+    glyphs = list(SPRITES)
+    pygame.image.save(
+        _sheet([SPRITES[glyph][1]() for glyph in glyphs], ATLAS_COLUMNS),
+        str(HERE / "atlas.png"),
+    )
+    biomes = list(WALLS)
+    pygame.image.save(
+        _sheet([WALLS[key]() for key in biomes], WALL_COLUMNS),
+        str(HERE / "walls.png"),
+    )
 
     manifest = {
         "name": "Starter",
         "cell_size": SIZE,
         "mode": "tinted",
-        "sprites": {glyph: name for glyph, (name, _) in SPRITES.items()},
+        "atlas": {
+            "file": "atlas.png",
+            "columns": ATLAS_COLUMNS,
+            "sprites": {glyph: index for index, glyph in enumerate(glyphs)},
+        },
+        "walls": {
+            "file": "walls.png",
+            "columns": WALL_COLUMNS,
+            "sprites": {f"#@{key}": index for index, key in enumerate(biomes)},
+        },
     }
     (HERE / "pack.json").write_text(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
     )
-    print(f"wrote {len(SPRITES)} sprites and a manifest to {HERE}")
-    print("that is every glyph the game draws.")
+
+    # The pack used to be loose PNGs. Leaving them behind would mean anybody
+    # regenerating it kept a folder of files nothing reads.
+    stale = [
+        old
+        for old in HERE.glob("*.png")
+        if old.name not in ("atlas.png", "walls.png")
+    ]
+    for old in stale:
+        old.unlink()
+
+    print(f"wrote {len(glyphs)} sprites to atlas.png - every glyph the game draws")
+    print(f"wrote {len(biomes)} walls to walls.png - one per biome")
+    if stale:
+        print(f"removed {len(stale)} loose sprites the manifest no longer names")
 
 
 if __name__ == "__main__":

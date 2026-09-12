@@ -265,12 +265,17 @@ class Screen:
         cells: Sequence[Sequence[tuple[str, Color] | None]],
         backgrounds: Sequence[Sequence[Color | None]] | None = None,
         shades: Sequence[Sequence[float]] | None = None,
+        biomes: Sequence[Sequence[str]] | None = None,
     ) -> None:
         """Draw a cell window; None cells stay blank.
 
         `backgrounds`, when given, is a matching grid of per-cell washes drawn
         under the glyphs - the biome colour lives there, because a glyph is too
         few pixels to carry it.
+
+        `biomes` is the same window again, saying which place each cell is in.
+        Only a texture pack reads it, and only to pick between variants of a
+        glyph: the wash already tells an ASCII player where they are.
 
         `cells` must be aligned with the camera window: its [0][0] entry is
         the world cell at `camera_origin(camera_center)` for the same camera
@@ -296,10 +301,12 @@ class Screen:
                     )
         for row, line in enumerate(cells[: self._rows]):
             faded = shades[row] if shades is not None and row < len(shades) else None
+            here = biomes[row] if biomes is not None and row < len(biomes) else None
             for col, cell in enumerate(line[: self._cols]):
                 if cell is not None:
                     dim = faded[col] if faded is not None and col < len(faded) else 1.0
-                    self._blit_glyph(cell[0], col, row, cell[1], dim)
+                    where = here[col] if here is not None and col < len(here) else ""
+                    self._blit_glyph(cell[0], col, row, cell[1], dim, where)
 
     def draw_glyph(
         self,
@@ -480,9 +487,15 @@ class Screen:
         return cx - self._cols // 2, cy - self._rows // 2
 
     def _blit_glyph(
-        self, glyph: str, col: int, row: int, color: Color, dim: float = 1.0
+        self,
+        glyph: str,
+        col: int,
+        row: int,
+        color: Color,
+        dim: float = 1.0,
+        biome: str = "",
     ) -> None:
-        surface = self._sprite_surface(glyph, color, dim)
+        surface = self._sprite_surface(glyph, color, dim, biome)
         if surface is None:
             surface = self._glyph_surface(glyph, color)
         cell = self._config.cell_size
@@ -490,7 +503,7 @@ class Screen:
         py = self._margin_y + row * cell + (cell - surface.get_height()) // 2
         self._window.blit(surface, (px, py))
 
-    def _sprite_surface(self, glyph: str, color: Color, dim: float):
+    def _sprite_surface(self, glyph: str, color: Color, dim: float, biome: str = ""):
         """The pack's picture for this glyph, drawn its way, or None.
 
         Tinted art is multiplied by the cell colour, which is how a greyscale
@@ -503,10 +516,10 @@ class Screen:
             return None
         from render import sprites
 
-        picture = self._sheet.for_glyph(glyph)
+        picture = self._sheet.for_glyph(glyph, biome)
         if picture is None:
             return None
-        if self._sheet.mode_for(glyph) == "full":
+        if self._sheet.mode_for(glyph, biome) == "full":
             return sprites.shade(picture, dim)
         return sprites.tint(picture, color)
 

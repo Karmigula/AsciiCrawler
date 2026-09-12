@@ -320,7 +320,10 @@ def test_the_pack_invents_nothing_the_game_never_draws():
         glyph for _heading, rows in legend_sections(DEFAULT_CONFIG) for glyph, _, _ in rows
     } | set(BOLT_GLYPHS.values())
 
-    assert not sorted(set(pack.sprites) - drawable)
+    # `covers` rather than the keys: a biome variant is art for a glyph the
+    # game does draw, not art for a glyph called `#@frozen`.
+    assert not sorted(set(pack.covers) - drawable)
+    assert set(pack.variants) <= drawable
 
 
 def test_every_creature_has_its_own_silhouette():
@@ -427,3 +430,237 @@ def test_the_symbol_sheet_shows_what_a_pack_actually_draws():
         if dressed.get_at((x, y)) != plain.get_at((x, y))
     )
     assert differing > 50, "the sheet looks the same with a pack on"
+
+
+def test_a_wall_looks_different_in_different_biomes(tmp_path):
+    """The whole point of per-biome art: two cells, two pictures, one glyph."""
+    from render.packs import load
+
+    folder = tmp_path / "biomed"
+    folder.mkdir()
+    sheet = pygame.Surface((32, 16), pygame.SRCALPHA)
+    sheet.fill((255, 0, 0, 255), (0, 0, 16, 16))
+    sheet.fill((0, 0, 255, 255), (16, 0, 16, 16))
+    pygame.image.save(sheet, str(folder / "walls.png"))
+    plain = pygame.Surface((16, 16), pygame.SRCALPHA)
+    plain.fill((0, 255, 0, 255))
+    pygame.image.save(plain, str(folder / "wall.png"))
+    (folder / "pack.json").write_text(
+        json.dumps(
+            {
+                "name": "Biomed",
+                "cell_size": 16,
+                "mode": "full",
+                "sprites": {"#": "wall.png"},
+                "walls": {
+                    "file": "walls.png",
+                    "columns": 2,
+                    "sprites": {"#@frozen": 0, "#@marsh": 1},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    screen, config = _screen()
+    screen.use_pack(load(folder))
+    screen.draw_cells(
+        [[("#", (255, 255, 255)), ("#", (255, 255, 255)), ("#", (255, 255, 255))]],
+        biomes=[["frozen", "marsh", "ruins"]],
+    )
+
+    assert _pixel(screen, config, 0) == (255, 0, 0)
+    assert _pixel(screen, config, 1) == (0, 0, 255)
+    # A biome the pack knows nothing about falls back to the plain wall.
+    assert _pixel(screen, config, 2) == (0, 255, 0)
+
+    # And without the grid it is the plain wall everywhere - which is what a
+    # caller that never heard of biomes gets, and is also the only thing that
+    # proves the three answers above came from the grid and not from luck.
+    screen.draw_cells([[("#", (255, 255, 255))] * 3])
+    assert [_pixel(screen, config, at) for at in range(3)] == [(0, 255, 0)] * 3
+
+
+def test_one_sheet_is_opened_once_however_many_sprites_come_out_of_it(tmp_path):
+    """The reason for an atlas: fifty-one glyphs, one file handle."""
+    from render.packs import load
+    from render.sprites import SpriteSheet
+
+    folder = tmp_path / "atlased"
+    folder.mkdir()
+    art = pygame.Surface((32, 32), pygame.SRCALPHA)
+    art.fill((200, 200, 200, 255))
+    pygame.image.save(art, str(folder / "atlas.png"))
+    (folder / "pack.json").write_text(
+        json.dumps(
+            {
+                "cell_size": 16,
+                "atlas": {
+                    "file": "atlas.png",
+                    "columns": 2,
+                    "sprites": {"#": 0, "r": 1, "@": 2, "o": 3},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    sheet = SpriteSheet(load(folder), 16)
+    loads = []
+    original = pygame.image.load
+
+    def counted(name):
+        loads.append(name)
+        return original(name)
+
+    pygame.image.load = counted
+    try:
+        for glyph in "#r@o":
+            assert sheet.for_glyph(glyph) is not None
+    finally:
+        pygame.image.load = original
+
+    assert len(loads) == 1
+
+
+def test_a_cell_off_the_edge_of_its_sheet_costs_that_glyph_and_says_so(tmp_path):
+    from render.packs import load
+    from render.sprites import SpriteSheet
+
+    folder = tmp_path / "overrun"
+    folder.mkdir()
+    art = pygame.Surface((32, 16), pygame.SRCALPHA)
+    art.fill((200, 200, 200, 255))
+    pygame.image.save(art, str(folder / "atlas.png"))
+    (folder / "pack.json").write_text(
+        json.dumps(
+            {
+                "cell_size": 16,
+                "atlas": {
+                    "file": "atlas.png",
+                    "columns": 2,
+                    "sprites": {"#": 0, "r": 9},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    sheet = SpriteSheet(load(folder), 16)
+
+    assert sheet.for_glyph("#") is not None
+    assert sheet.for_glyph("r") is None
+    assert any("atlas.png" in failure for failure in sheet.failures)
+
+
+def test_the_starter_pack_draws_fifteen_different_walls():
+    """One rock shape per biome, and no two the same."""
+    from pathlib import Path
+
+    from render.packs import load
+    from render.sprites import SpriteSheet
+    from world.biomes import BIOMES
+
+    folder = Path("packs/starter")
+    if not (folder / "pack.json").is_file():
+        pytest.skip("the starter pack has not been generated")
+
+    sheet = SpriteSheet(load(folder), 32)
+    shapes = {}
+    for biome in BIOMES:
+        art = sheet.for_glyph("#", biome.key)
+        assert art is not None, f"no wall for {biome.key}"
+        pixels = tuple(
+            art.get_at((x, y))[:3] for x in range(0, 32, 2) for y in range(0, 32, 2)
+        )
+        clash = [key for key, seen in shapes.items() if seen == pixels]
+        assert not clash, f"{biome.key} draws the same wall as {clash[0]}"
+        shapes[biome.key] = pixels
+
+
+def test_a_biome_wall_is_bright_enough_to_survive_being_tinted():
+    """Tinted art is multiplied, so mid-grey rock comes out near black."""
+    from pathlib import Path
+
+    from render.packs import load
+    from render.sprites import SpriteSheet
+    from world.biomes import BIOMES
+
+    folder = Path("packs/starter")
+    if not (folder / "pack.json").is_file():
+        pytest.skip("the starter pack has not been generated")
+
+    sheet = SpriteSheet(load(folder), 32)
+    for biome in BIOMES:
+        art = sheet.for_glyph("#", biome.key)
+        lit = [
+            art.get_at((x, y))[0]
+            for x in range(32)
+            for y in range(32)
+            if art.get_at((x, y))[3] > 40
+        ]
+        average = sum(lit) / max(1, len(lit))
+        assert average > 120, f"{biome.key} averages {average:.0f}; it will go black"
+
+
+def test_the_biome_grid_lines_up_with_the_cells_it_describes():
+    """The grid the pack reads has to be the same window as the glyphs.
+
+    An off-by-one here would draw the frozen wall one row into the ossuary and
+    nothing would ever complain: both are walls, both are grey, and the screen
+    would simply be subtly wrong forever.
+    """
+    from dataclasses import replace
+    from pathlib import Path
+
+    from config import DEFAULT_CONFIG
+    from render.frame import build_frame
+    from render.screen import Screen
+    from sim.session import Session
+
+    folder = Path("packs/starter")
+    if not (folder / "pack.json").is_file():
+        pytest.skip("the starter pack has not been generated")
+
+    config = replace(DEFAULT_CONFIG, texture_pack="starter")
+    session = Session(config, seed=3, record_hall=False)
+    session.advance(150)
+    screen = Screen(config)
+    origin = screen.camera_origin((session.agent.x, session.agent.y))
+    cols, rows = screen.view_dims
+
+    biomes: list = []
+    cells, _backgrounds, _ = build_frame(
+        session.world, session.agent, config, origin, cols, rows, biomes_out=biomes
+    )
+
+    assert len(biomes) == rows
+    assert all(len(line) == cols for line in biomes)
+    assert len(biomes) == len(cells)
+    for y, line in enumerate(biomes):
+        for x, key in enumerate(line):
+            assert key == session.world.biome_key_at(origin[0] + x, origin[1] + y)
+
+
+def test_a_caller_that_wants_no_biome_grid_pays_for_none():
+    """`biomes_out` is opt-in, like `shades_out`: the web build asks for neither."""
+    from pathlib import Path
+
+    from config import DEFAULT_CONFIG
+    from render.frame import build_frame
+    from sim.session import Session
+
+    if not Path("packs/starter/pack.json").is_file():
+        pytest.skip("the starter pack has not been generated")
+
+    session = Session(DEFAULT_CONFIG, seed=3, record_hall=False)
+    session.advance(20)
+
+    cells, backgrounds, text = build_frame(
+        session.world, session.agent, DEFAULT_CONFIG, (0, 0), 12, 8
+    )
+
+    assert len(cells) == 8
+    assert len(backgrounds) == 8
+    assert len(text) == 8
+

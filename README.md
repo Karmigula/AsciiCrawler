@@ -65,7 +65,8 @@ whatever is in `packs/`, and `starter` ships with the game:
 
 `starter` now covers everything the game draws: ground, gear, loot, props,
 spell bolts, all ten monsters, all twenty-one named bosses and the creature
-itself.
+itself — plus a different wall for each of the fifteen biomes, so the frozen
+deep is not the quarried halls under a blue wash.
 
 **A pack does not have to cover everything.** Anything it leaves out is still
 drawn as a letter, per glyph, so a pack that only replaces walls is a
@@ -91,6 +92,36 @@ packs/mossy/
   }
 }
 ```
+
+**Or put them all in one image.** Nothing in this game is animated, so a
+sprite is one picture and a sheet is a grid of them, addressed by counting
+across and then down. `starter` ships as two files rather than fifty-one:
+
+```
+packs/starter/
+  pack.json
+  atlas.png    8 across - every glyph
+  walls.png    5 across - one wall per biome
+```
+
+```json
+{
+  "cell_size": 32,
+  "atlas": { "file": "atlas.png", "columns": 8, "sprites": { "#": 0, ".": 1 } },
+  "walls": { "file": "walls.png", "columns": 5, "sprites": { "#@frozen": 9 } }
+}
+```
+
+Both sections are optional, and so is `sprites`; mix them freely. Adding a row
+to a sheet never moves anything already in it.
+
+**A glyph can look different in different places.** `"#@frozen"` is the wall
+of the frozen deep, and any biome without its own entry falls back to plain
+`"#"`. The biome keys are `halls`, `caves`, `caverns`, `ashfields`, `ossuary`,
+`warren`, `ruins`, `marsh`, `crystal`, `frozen`, `spores`, `sunken`,
+`station`, `machine` and `weave`. Walls are what this is for and where it
+earns its keep — rock is most of what is on screen — but it works on any
+glyph. `tools/wall_art.py` draws the starter pack's fifteen.
 
 **Two ways to draw**, per pack or per sprite:
 

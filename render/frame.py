@@ -120,17 +120,32 @@ def build_frame(
     rows: int,
     overlay: str | None = None,
     shades_out: list | None = None,
+    biomes_out: list | None = None,
 ) -> tuple[list, list, Sequence[str]]:
     """Return (cells, backgrounds, rows_text) for a window at `origin`.
 
     `cells` is (glyph, colour) or None per tile, shaded by what the agent
     remembers and how long ago; `backgrounds` is the matching biome wash.
     `shades_out`, if given, is filled with the brightness behind each of those
-    colours - only a texture pack needs it, and only the window has one.
+    colours, and `biomes_out` with the biome each cell stands in - only a
+    texture pack needs either, and only the window has them. Which biome a
+    wall belongs to is a fact about the world, not about belief: the creature
+    is looking at rock it can see, and rock in the frozen deep looks like ice
+    whether or not it has been there before.
     Truth goes in, belief comes out - the window is built from `tile_at` and
     then dimmed through the same memory the brain plans on.
     """
     rows_text = world_rows(world, origin, cols, rows)
+    # One lookup per tile, shared by the glyph colour, the background wash and
+    # the pack's per-biome art, all three of which want the same answer.
+    known_biomes: dict = {}
+
+    def biome_key(coord):
+        found = known_biomes.get(coord)
+        if found is None:
+            found = known_biomes[coord] = world.biome_key_at(*coord)
+        return found
+
     visible = visible_from(world, agent, config)
     mind = agent.mind(config)
     cells = fog_grid(
@@ -146,7 +161,7 @@ def build_frame(
         stale_fraction=config.memory_stale_fraction,
         ghost_color=config.ghost_color,
         color_for=lambda glyph, coord: terrain_color(
-            glyph, coord, config, world.biome_key_at(*coord)
+            glyph, coord, config, biome_key(coord)
         ),
         ghost_color_for=lambda glyph: thing_color(glyph, config),
         memory_tint=config.memory_tint_color,
@@ -166,6 +181,11 @@ def build_frame(
         config,
         tick=agent.tick_count,
         ttl=mind.memory_ttl,
-        biome_for=lambda coord: world.biome_key_at(*coord),
+        biome_for=biome_key,
     )
+    if biomes_out is not None:
+        biomes_out[:] = [
+            [biome_key((origin[0] + x, origin[1] + y)) for x in range(cols)]
+            for y in range(rows)
+        ]
     return cells, backgrounds, rows_text

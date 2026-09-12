@@ -32,14 +32,21 @@ _BROKEN = object()
 class SpriteSheet:
     """Every picture in one pack, loaded on demand and kept.
 
-    `for_glyph` is the whole interface: hand it a glyph and a cell size, get a
-    surface or None. None means "draw the letter", which is what every glyph
-    the pack does not mention gets.
+    `for_glyph` is the whole interface: hand it a glyph and the biome the cell
+    is in, get a surface or None. None means "draw the letter", which is what
+    every glyph the pack does not mention gets.
+
+    Files are loaded once and shared, so a pack that packs fifty sprites into
+    one atlas and fifteen walls into another opens two files rather than
+    sixty-five. A sprite with a rect is a window onto its file; the surface is
+    copied out of it, because a subsurface holds its parent alive and cannot
+    be scaled in place.
     """
 
     def __init__(self, pack: Pack, cell_size: int) -> None:
         self.pack = pack
         self.cell_size = cell_size
+        self._files: dict = {}
         self._loaded: dict = {}
         self._scaled: dict = {}
         self.failures: list = []
@@ -51,19 +58,20 @@ class SpriteSheet:
         self.cell_size = cell_size
         self._scaled.clear()
 
-    def mode_for(self, glyph: str) -> str | None:
-        sprite = self.pack.sprite_for(glyph)
+    def mode_for(self, glyph: str, biome: str = "") -> str | None:
+        sprite = self.pack.sprite_for(glyph, biome)
         return None if sprite is None else sprite.mode
 
-    def for_glyph(self, glyph: str):
+    def for_glyph(self, glyph: str, biome: str = ""):
         """A surface scaled to the current cell, or None to draw the letter."""
-        cached = self._scaled.get(glyph)
+        key = (glyph, biome)
+        cached = self._scaled.get(key)
         if cached is not None:
             return None if cached is _BROKEN else cached
 
-        surface = self._original(glyph)
+        surface = self._original(glyph, biome)
         if surface is None:
-            self._scaled[glyph] = _BROKEN
+            self._scaled[key] = _BROKEN
             return None
 
         size = self.cell_size
@@ -71,29 +79,59 @@ class SpriteSheet:
             # Nearest-neighbour: pack art is pixel art, and smoothing it turns
             # a crisp 16x16 wall into a smear at 20 pixels a cell.
             surface = pygame.transform.scale(surface, (size, size))
-        self._scaled[glyph] = surface
+        self._scaled[key] = surface
         return surface
 
-    def _original(self, glyph: str):
-        """The file behind a glyph, loaded once, or None if it will not load."""
-        if glyph in self._loaded:
-            found = self._loaded[glyph]
+    def _original(self, glyph: str, biome: str):
+        """The picture behind a glyph here, cut once, or None if unusable."""
+        sprite = self.pack.sprite_for(glyph, biome)
+        if sprite is None:
+            return None
+
+        key = sprite.key
+        if key in self._loaded:
+            found = self._loaded[key]
             return None if found is _BROKEN else found
 
-        sprite = self.pack.sprite_for(glyph)
-        if sprite is None:
-            self._loaded[glyph] = _BROKEN
+        whole = self._file(sprite.path)
+        if whole is None:
+            self._loaded[key] = _BROKEN
             return None
+        if sprite.rect is None:
+            self._loaded[key] = whole
+            return whole
+
+        window = pygame.Rect(sprite.rect)
+        if not window.colliderect(whole.get_rect()) or not whole.get_rect().contains(
+            window
+        ):
+            # A manifest can ask for a cell past the edge of its own sheet, and
+            # that is a mistake worth naming rather than a crash worth having.
+            self.failures.append(
+                f"{sprite.glyph!r} asks for {tuple(window)} of "
+                f"{sprite.path.name}, which is {whole.get_size()}"
+            )
+            self._loaded[key] = _BROKEN
+            return None
+        cut = whole.subsurface(window).copy()
+        self._loaded[key] = cut
+        return cut
+
+    def _file(self, path):
+        """One image file, loaded once however many sprites live in it."""
+        name = str(path)
+        if name in self._files:
+            found = self._files[name]
+            return None if found is _BROKEN else found
         try:
-            surface = pygame.image.load(str(sprite.path))
-            surface = surface.convert_alpha()
+            surface = pygame.image.load(name).convert_alpha()
         except (pygame.error, FileNotFoundError) as reason:
             # A pack must never be able to stop the game, so a bad file costs
-            # that one glyph and is reported once.
-            self.failures.append(f"{sprite.path.name} would not load: {reason}")
-            self._loaded[glyph] = _BROKEN
+            # what is in it and is reported once.
+            self.failures.append(f"{path.name} would not load: {reason}")
+            self._files[name] = _BROKEN
             return None
-        self._loaded[glyph] = surface
+        self._files[name] = surface
         return surface
 
 

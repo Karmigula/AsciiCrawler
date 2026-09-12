@@ -141,3 +141,169 @@ def test_the_ascii_pack_draws_nothing():
     """The way to turn the whole thing off, and the default."""
     assert len(packs.EMPTY) == 0
     assert packs.EMPTY.sprite_for("#") is None
+
+
+def test_a_sheet_cuts_one_file_into_a_grid(tmp_path):
+    """An atlas addresses sprites by counting across and down."""
+    folder = _pack(
+        tmp_path,
+        {
+            "cell_size": 16,
+            "atlas": {"file": "atlas.png", "columns": 4, "sprites": {"#": 0, "r": 5}},
+        },
+        files=("atlas.png",),
+    )
+
+    pack = packs.load(folder)
+
+    assert pack.problems == []
+    assert pack.sprite_for("#").rect == (0, 0, 16, 16)
+    assert pack.sprite_for("r").rect == (16, 16, 16, 16)
+    assert pack.sprite_for("#").path == folder / "atlas.png"
+
+
+def test_a_pack_can_draw_one_glyph_differently_per_biome(tmp_path):
+    folder = _pack(
+        tmp_path,
+        {
+            "cell_size": 16,
+            "sprites": {"#": "wall.png"},
+            "walls": {
+                "file": "walls.png",
+                "columns": 2,
+                "sprites": {"#@frozen": 0, "#@ossuary": 3},
+            },
+        },
+        files=("wall.png", "walls.png"),
+    )
+
+    pack = packs.load(folder)
+
+    assert pack.problems == []
+    assert pack.sprite_for("#", "frozen").rect == (0, 0, 16, 16)
+    assert pack.sprite_for("#", "ossuary").rect == (16, 16, 16, 16)
+    # A biome the pack says nothing about still gets the plain wall.
+    assert pack.sprite_for("#", "marsh").path == folder / "wall.png"
+    assert pack.sprite_for("#").path == folder / "wall.png"
+
+
+def test_a_biome_wall_with_no_plain_wall_is_still_only_for_that_biome(tmp_path):
+    """No accidental promotion: a frozen wall is not every wall."""
+    folder = _pack(
+        tmp_path,
+        {
+            "cell_size": 16,
+            "walls": {"file": "walls.png", "columns": 2, "sprites": {"#@frozen": 0}},
+        },
+        files=("walls.png",),
+    )
+
+    pack = packs.load(folder)
+
+    assert pack.sprite_for("#", "frozen") is not None
+    assert pack.sprite_for("#", "halls") is None
+    assert pack.sprite_for("#") is None
+
+
+def test_a_sheet_that_is_not_there_is_reported_not_raised(tmp_path):
+    folder = _pack(
+        tmp_path,
+        {"cell_size": 16, "atlas": {"file": "gone.png", "columns": 4, "sprites": {"#": 0}}},
+    )
+
+    pack = packs.load(folder)
+
+    assert len(pack) == 0
+    assert any("gone.png" in problem for problem in pack.problems)
+
+
+def test_a_sheet_without_columns_says_so(tmp_path):
+    folder = _pack(
+        tmp_path,
+        {"cell_size": 16, "atlas": {"file": "atlas.png", "sprites": {"#": 0}}},
+        files=("atlas.png",),
+    )
+
+    pack = packs.load(folder)
+
+    assert len(pack) == 0
+    assert any("columns" in problem for problem in pack.problems)
+
+
+def test_a_sheet_cell_that_is_not_a_number_is_skipped(tmp_path):
+    folder = _pack(
+        tmp_path,
+        {
+            "cell_size": 16,
+            "atlas": {
+                "file": "atlas.png",
+                "columns": 4,
+                "sprites": {"#": "third", "r": 1},
+            },
+        },
+        files=("atlas.png",),
+    )
+
+    pack = packs.load(folder)
+
+    assert pack.sprite_for("#") is None
+    assert pack.sprite_for("r") is not None
+    assert any("third" in problem for problem in pack.problems)
+
+
+def test_covers_counts_a_glyph_once_however_many_biomes_it_has(tmp_path):
+    folder = _pack(
+        tmp_path,
+        {
+            "cell_size": 16,
+            "sprites": {"#": "wall.png"},
+            "walls": {
+                "file": "walls.png",
+                "columns": 2,
+                "sprites": {"#@frozen": 0, "#@marsh": 1},
+            },
+        },
+        files=("wall.png", "walls.png"),
+    )
+
+    pack = packs.load(folder)
+
+    assert pack.covers == "#"
+    assert pack.variants == {"#": ["frozen", "marsh"]}
+
+
+def test_the_starter_pack_ships_a_wall_for_every_biome():
+    """The one glyph the game draws most of is worth fifteen of."""
+    from pathlib import Path
+
+    from world.biomes import BIOMES
+
+    folder = Path("packs/starter")
+    if not (folder / packs.MANIFEST).is_file():
+        return  # the pack has not been generated
+
+    pack = packs.load(folder)
+
+    assert pack.problems == []
+    missing = [
+        biome.key for biome in BIOMES if pack.sprite_for("#", biome.key).biome == ""
+    ]
+    assert not missing, f"the starter pack has no wall for {missing}"
+
+
+def test_a_sheet_cell_before_the_start_of_the_sheet_is_refused(tmp_path):
+    """Caught at load rather than at draw: a pack reports its faults at once."""
+    folder = _pack(
+        tmp_path,
+        {
+            "cell_size": 16,
+            "atlas": {"file": "atlas.png", "columns": 2, "sprites": {"#": -3}},
+        },
+        files=("atlas.png",),
+    )
+
+    pack = packs.load(folder)
+
+    assert pack.sprite_for("#") is None
+    assert any("-3" in problem for problem in pack.problems)
+
