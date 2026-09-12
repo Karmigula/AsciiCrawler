@@ -375,6 +375,84 @@ class Screen:
                 self._window.blit(surface, (x, y))
             y += heights[index]
 
+    def draw_legend(self, rows, config, title_rows) -> None:
+        """The symbol sheet: title, then as many columns as it takes to fit.
+
+        Each entry is drawn with the sprite the current pack uses for it, or
+        the letter when the pack has none - which is the only honest way to
+        show a legend. A sheet that says a wall is `#` while the screen behind
+        it is full of brickwork is not a legend, it is a quiz.
+
+        Columns rather than a scroll because the whole point is to take it in
+        at a glance, and `draw_centered` does not clip: at fifty-one entries
+        the single column this replaced ran off the bottom of the window and
+        the last third of the bestiary was simply not on screen.
+        """
+        from render.legend import columns_for
+
+        self._window.fill(config.background_color)
+        line = config.hud_line_height
+        title_height = len(title_rows) * (line + config.menu_title_font_size // 2)
+        footer = line * 2
+        room = max(4, (self._height - title_height - footer - 20) // line)
+        columns = columns_for(rows, room)
+
+        widest = max(
+            (self._hud_font.size(text)[0] for kind, text in _entry_texts(rows)),
+            default=120,
+        )
+        cell = config.cell_size
+        column_width = widest + cell + 24
+        total = column_width * len(columns)
+        left = max(10, (self._width - total) // 2)
+
+        y = max(6, (self._height - title_height - footer - room * line) // 2)
+        for index, text in enumerate(title_rows):
+            surface = self._title_font.render(text, True, config.menu_title_color)
+            self._window.blit(surface, ((self._width - surface.get_width()) // 2, y))
+            y += line + config.menu_title_font_size // 2
+        top = y + 8
+
+        for number, column in enumerate(columns):
+            x = left + number * column_width
+            y = top
+            for kind, value in column:
+                if kind == "gap":
+                    y += line
+                    continue
+                if kind == "heading":
+                    surface = self._hud_font.render(value, True, config.menu_dim_color)
+                    self._window.blit(surface, (x, y))
+                    y += line
+                    continue
+                glyph, text, colour = value
+                self._blit_legend_icon(glyph, colour, x, y)
+                surface = self._hud_font.render(text, True, colour)
+                self._window.blit(surface, (x + cell + 8, y + (line - surface.get_height()) // 2))
+                y += line
+
+        footer_text = self._hud_font.render(
+            "j or esc to go back", True, config.menu_dim_color
+        )
+        self._window.blit(
+            footer_text,
+            ((self._width - footer_text.get_width()) // 2, self._height - line - 10),
+        )
+
+    def _blit_legend_icon(self, glyph: str, colour, x: int, y: int) -> None:
+        """One entry's picture: the pack's sprite, or the letter it falls back to."""
+        cell = self._config.cell_size
+        surface = self._sprite_surface(glyph, colour, 1.0)
+        if surface is None:
+            surface = self._glyph_surface(glyph, colour)
+        self._window.blit(
+            surface,
+            (
+                x + (cell - surface.get_width()) // 2,
+                y + (self._config.hud_line_height - surface.get_height()) // 2,
+            ),
+        )
+
     def panel_capacity(self, reserved_lines: int = 0) -> int:
         """How many lines a panel can show without running into a reserved block.
 
@@ -444,3 +522,12 @@ class Screen:
         if path.is_file():
             return pygame.font.Font(str(path), size)
         return pygame.font.Font(None, size)
+
+
+def _entry_texts(rows):
+    """Every piece of text the legend will draw, for measuring a column width."""
+    for kind, value in rows:
+        if kind == "heading":
+            yield kind, value
+        elif kind == "row":
+            yield kind, value[1]

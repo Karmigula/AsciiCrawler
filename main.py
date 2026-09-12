@@ -48,6 +48,7 @@ from render.menu import (
     ENTRIES,
     TITLE_ROWS,
     adjust,
+    block_text,
     apply_settings,
     apply_stored,
     default_settings,
@@ -59,7 +60,7 @@ from render.menu import (
     stored_values,
 )
 from sim import hall
-from render.legend import legend_lines
+from render.legend import legend_rows
 from render.packs import EMPTY, load as load_pack
 from render.overlays import OVERLAY_NAMES
 from render.screen import Screen
@@ -149,7 +150,7 @@ def main(config: Config = DEFAULT_CONFIG) -> None:
                         screen.toggle_borderless()
                     elif event.key in (pygame.K_j, pygame.K_ESCAPE):
                         in_legend = False
-            screen.draw_centered(legend_lines(config), big_lines=5)
+            screen.draw_legend(legend_rows(config), config, block_text("LEGEND"))
             screen.present()
             continue
 

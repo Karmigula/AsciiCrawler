@@ -121,18 +121,42 @@ def legend_sections(config: Config) -> list[tuple[str, list[Row]]]:
     ]
 
 
-def legend_lines(config: Config) -> list[tuple[str, tuple[int, int, int]]]:
-    """The sheet as (text, colour) lines, for the desktop screen."""
-    from render.menu import block_text
+def legend_rows(config: Config) -> list:
+    """The sheet flattened to one list: ("heading", text) or ("row", entry).
 
-    lines: list[tuple[str, tuple[int, int, int]]] = [
-        (row, config.menu_title_color) for row in block_text("LEGEND")
-    ]
-    for heading, rows in legend_sections(config):
-        lines.append(("", config.menu_dim_color))
-        lines.append((heading, config.menu_dim_color))
-        for glyph, text, colour in rows:
-            lines.append((f"  {glyph}   {text}", colour))
-    lines.append(("", config.menu_dim_color))
-    lines.append(("j or esc to go back", config.menu_dim_color))
-    return lines
+    Flat because the screen lays it out in columns and a column break has to
+    be allowed to fall anywhere - a nested shape would force every section to
+    start a new column, and with six sections and fifty-one entries that wastes
+    most of the window.
+    """
+    rows: list = []
+    for heading, entries in legend_sections(config):
+        rows.append(("heading", heading))
+        rows.extend(("row", entry) for entry in entries)
+        rows.append(("gap", None))
+    return rows[:-1] if rows else rows
+
+
+def columns_for(rows: list, per_column: int) -> list:
+    """Split the flat list into columns of at most `per_column` rows.
+
+    A heading is never left stranded at the foot of a column: if one would be,
+    the column ends early and it starts the next. A heading with nothing under
+    it is worse than a short column.
+    """
+    per_column = max(1, per_column)
+    columns: list = [[]]
+    for index, row in enumerate(rows):
+        current = columns[-1]
+        stranded = (
+            len(current) >= per_column - 1
+            and row[0] == "heading"
+            and index + 1 < len(rows)
+        )
+        if current and (len(current) >= per_column or stranded):
+            columns.append([])
+            current = columns[-1]
+        if row[0] == "gap" and not current:
+            continue  # no blank line at the top of a column
+        current.append(row)
+    return columns

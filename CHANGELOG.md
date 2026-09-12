@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### The symbol sheet shows what you are actually looking at
+
+<kbd>j</kbd> drew letters even with a texture pack on, which made it a quiz
+rather than a legend: it told you a wall was `#` while the screen behind it
+was full of brickwork. Each row now shows the sprite the current pack uses,
+and falls back to the letter for anything the pack leaves alone.
+
+It also ran off the bottom of the window - fifty-one entries in one column
+that nothing clipped, so the last third of the bestiary was not on screen at
+all. It lays itself out in as many columns as the window has room for, and
+never leaves a heading stranded at the foot of one.
+
 ### Texture packs
 
 The window can draw sprites where a pack provides them and letters everywhere

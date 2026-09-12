@@ -1,7 +1,7 @@
 """The cheat sheet, and the promise that it is complete."""
 
 from config import DEFAULT_CONFIG
-from render.legend import legend_lines, legend_sections
+from render.legend import legend_sections
 
 
 def _bolt_glyphs():
@@ -75,8 +75,45 @@ def test_every_row_says_something():
             assert len(colour) == 3, f"{glyph} has no colour"
 
 
-def test_the_desktop_sheet_says_how_to_leave_it():
-    text = "\n".join(line for line, _ in legend_lines(DEFAULT_CONFIG))
+def test_the_flat_sheet_holds_everything_the_sections_do():
+    from render.legend import legend_rows
 
-    assert "j" in text and "esc" in text
-    assert "rock" in text and "totem" in text
+    entries = [row for kind, row in legend_rows(DEFAULT_CONFIG) if kind == "row"]
+    from_sections = [row for _heading, rows in legend_sections(DEFAULT_CONFIG) for row in rows]
+
+    assert entries == from_sections
+
+
+def test_columns_never_hold_more_rows_than_they_were_given_room_for():
+    """The reported bug was the sheet running off the bottom of the window.
+
+    `draw_centered` does not clip, so at fifty-one entries a single column
+    simply carried on past the edge and the last third of the bestiary was not
+    on screen at all.
+    """
+    from render.legend import columns_for, legend_rows
+
+    rows = legend_rows(DEFAULT_CONFIG)
+    for room in (4, 9, 17, 24, 60, 500):
+        for column in columns_for(rows, room):
+            assert len(column) <= room, f"a column held {len(column)} with room for {room}"
+
+
+def test_no_row_is_lost_when_the_sheet_is_split():
+    from render.legend import columns_for, legend_rows
+
+    rows = legend_rows(DEFAULT_CONFIG)
+    for room in (5, 12, 30):
+        kept = [row for column in columns_for(rows, room) for row in column]
+        assert [r for r in kept if r[0] != "gap"] == [r for r in rows if r[0] != "gap"]
+
+
+def test_a_heading_is_never_left_at_the_foot_of_a_column():
+    """A heading with nothing under it is worse than a short column."""
+    from render.legend import columns_for, legend_rows
+
+    rows = legend_rows(DEFAULT_CONFIG)
+    for room in (6, 11, 19, 28):
+        for column in columns_for(rows, room):
+            if column and column[-1][0] == "heading":
+                raise AssertionError(f"a heading was stranded with room={room}")

@@ -363,3 +363,67 @@ def test_every_creature_has_its_own_silhouette():
             overlap = len(mask & seen) / max(1, len(mask | seen))
             assert overlap < 0.75, f"{glyph} and {other} are the same shape"
         shapes[glyph] = mask
+
+
+def _legend_screen(pack_name, size):
+    from dataclasses import replace
+
+    from config import DEFAULT_CONFIG
+    from render.legend import legend_rows
+    from render.menu import block_text
+    from render.packs import EMPTY, load
+    from render.screen import Screen
+
+    config = replace(
+        DEFAULT_CONFIG,
+        texture_pack=pack_name,
+        window_width=size[0],
+        window_height=size[1],
+    )
+    screen = Screen(config)
+    screen.use_pack(load("packs/starter") if pack_name else EMPTY)
+    screen.draw_legend(legend_rows(config), config, block_text("LEGEND"))
+    # A copy, because `set_mode` hands back the one display surface: two
+    # Screens share it, and the second draw silently overwrites the first.
+    # Comparing the live surfaces made this test compare a picture with
+    # itself, which it duly reported as "no difference".
+    return screen, config, screen._window.copy()
+
+
+def test_the_symbol_sheet_fits_the_window_it_is_drawn_in():
+    """It ran off the bottom: fifty-one entries in one uncliped column."""
+    from pathlib import Path
+
+    if not Path("packs/starter/pack.json").is_file():
+        pytest.skip("the starter pack has not been generated")
+
+    for size in ((1200, 800), (1000, 620), (900, 520)):
+        _screen, config, window = _legend_screen("starter", size)
+        background = config.background_color[:3]
+        # Nothing at all in the last few rows of pixels: the footer sits above
+        # them, and anything below the footer is content that fell off.
+        for y in range(window.get_height() - 6, window.get_height()):
+            for x in range(0, window.get_width(), 7):
+                assert window.get_at((x, y))[:3] == background, (
+                    f"something was drawn at the very bottom edge at {size}"
+                )
+
+
+def test_the_symbol_sheet_shows_what_a_pack_actually_draws():
+    """A sheet saying a wall is `#` while the screen is full of brickwork is
+    not a legend, it is a quiz."""
+    from pathlib import Path
+
+    if not Path("packs/starter/pack.json").is_file():
+        pytest.skip("the starter pack has not been generated")
+
+    _a, _c, dressed = _legend_screen("starter", (1200, 800))
+    _b, _d, plain = _legend_screen("", (1200, 800))
+
+    differing = sum(
+        1
+        for y in range(170, 760, 3)
+        for x in range(260, 620, 3)
+        if dressed.get_at((x, y)) != plain.get_at((x, y))
+    )
+    assert differing > 50, "the sheet looks the same with a pack on"
