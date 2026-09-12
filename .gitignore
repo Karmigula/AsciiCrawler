@@ -13,3 +13,9 @@ data/
 build/
 dist/
 *.manifest
+
+# A zip of a pack, sitting inside that pack. That is somebody's working copy
+# on the way to sharing it, not part of the pack - the manifest never names
+# it, and `tools/make_release.py` skips it. Ignored so it cannot be swept
+# into a commit again by a wildcard `git add`.
+packs/**/*.zip
