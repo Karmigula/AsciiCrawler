@@ -8,4 +8,4 @@ Bumping it is the whole release ritual: change the number here, commit, tag
 `v<number>`, push the tag.
 """
 
-VERSION = "1.0"
+VERSION = "1.0.1"
